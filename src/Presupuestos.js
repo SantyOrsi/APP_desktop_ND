@@ -5,29 +5,48 @@ import { collection, addDoc, updateDoc, doc, Timestamp, query, where, getDocs } 
 import { generarPresupuestoPDF } from './helpers/generarPresupuestoPDF';
 const { ipcRenderer } = window.require('electron');
 
-const guardarPDF = async () => {
-  try {
-    const pdfBytes = await generarPresupuestoPDF(form);
-    const result = await ipcRenderer.invoke('guardar-pdf', {
-      nombre: `Presupuesto_${form.nroPresupuesto || 'nuevo'}.pdf`,
-      buffer: Array.from(pdfBytes),
-    });
-    if (result.ok) alert(`PDF guardado en: ${result.ruta}`);
-  } catch (error) {
-    alert('Error al generar PDF: ' + error.message);
-  }
+const hoy = () => {
+  const d = new Date();
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
 };
+
+const FORM_VACIO = {
+  nroPresupuesto: '', cliente: '', fecha: hoy(), vigencia: hoy(),
+  origen: '', destino: '', salidaFecha: hoy(), salidaHora: '',
+  retornoFecha: '', retornoHora: '', movimiento: '', adicionales: '',
+  cantMov: '', cantAdi: '', alojViaticosCargo: '', importAlojViaticos: '',
+  capacidad: '', costoTotal: '', costoIva: '', estado: 'pendiente',
+};
+
+const inp = (value, onChange, placeholder = '', type = 'text', readOnly = false) => (
+  <input type={type} value={value || ''} onChange={onChange} placeholder={placeholder} readOnly={readOnly}
+    style={{ padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: readOnly ? '#F0F0F0' : '#F8F8F8', outline: 'none', width: '100%', color: readOnly ? '#888' : '#1A1A1A' }} />
+);
+
+const lbl = (texto) => (
+  <label style={{ fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5 }}>{texto}</label>
+);
+
+const campo = (label, children) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    {lbl(label)}
+    {children}
+  </div>
+);
+
+const seccionTitulo = (texto) => (
+  <div style={{ fontSize: 11, fontWeight: 700, color: '#F5C400', textTransform: 'uppercase', letterSpacing: 1, borderBottom: '1px solid #F0F0F0', paddingBottom: 8, marginBottom: 4 }}>
+    {texto}
+  </div>
+);
+
 export default function Presupuestos() {
   const { datos: presupuestos, cargando } = useColeccion('presupuestos');
   const [busqueda, setBusqueda] = useState('');
-  const [vista, setVista] = useState('tabla'); // 'tabla' | 'form'
-  const [form, setForm] = useState({
-    nroPresupuesto: '', cliente: '', fecha: '', vigencia: '',
-    origen: '', destino: '', salidaFecha: '', salidaHora: '',
-    retornoFecha: '', retornoHora: '', movimiento: '', adicionales: '',
-    cantMov: '', cantAdi: '', alojViaticosCargo: '', importAlojViaticos: '',
-    capacidad: '', costoTotal: '', costoIva: '',
-  });
+  const [vista, setVista] = useState('tabla');
+  const [form, setForm] = useState(FORM_VACIO);
+  const [docId, setDocId] = useState(null);
+  const [guardando, setGuardando] = useState(false);
 
   const set = (key) => (e) => {
     const val = e.target.value;
@@ -43,34 +62,70 @@ export default function Presupuestos() {
 
   const seleccionar = (item) => {
     setForm(item);
+    setDocId(item.id);
     setVista('form');
   };
 
   const nuevo = () => {
-    setForm({
-      nroPresupuesto: '', cliente: '', fecha: '', vigencia: '',
-      origen: '', destino: '', salidaFecha: '', salidaHora: '',
-      retornoFecha: '', retornoHora: '', movimiento: '', adicionales: '',
-      cantMov: '', cantAdi: '', alojViaticosCargo: '', importAlojViaticos: '',
-      capacidad: '', costoTotal: '', costoIva: '',
-    });
+    setForm(FORM_VACIO);
+    setDocId(null);
     setVista('form');
   };
 
   const guardar = async () => {
+    if (!form.nroPresupuesto.trim()) { alert('Ingresá un número de presupuesto'); return; }
+    setGuardando(true);
     try {
-      if (!form.nroPresupuesto.trim()) { alert('Ingresá un número de presupuesto'); return; }
       const datos = { ...form, actualizadoEn: Timestamp.now() };
-      const q = query(collection(db, 'presupuestos'), where('nroPresupuesto', '==', form.nroPresupuesto.trim()));
+      delete datos.id;
+      if (docId) {
+        await updateDoc(doc(db, 'presupuestos', docId), datos);
+      } else {
+        const q = query(collection(db, 'presupuestos'), where('nroPresupuesto', '==', form.nroPresupuesto.trim()));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          await updateDoc(doc(db, 'presupuestos', snap.docs[0].id), datos);
+          setDocId(snap.docs[0].id);
+        } else {
+          datos.creadoEn = Timestamp.now();
+          const ref = await addDoc(collection(db, 'presupuestos'), datos);
+          setDocId(ref.id);
+        }
+      }
+    } catch (error) {
+      alert('Error al guardar: ' + error.message);
+    }
+    setGuardando(false);
+  };
+
+  const generarPDF = async () => {
+    try {
+      const pdfBytes = await generarPresupuestoPDF(form);
+      const result = await ipcRenderer.invoke('guardar-pdf', {
+        nombre: `Presupuesto_${form.nroPresupuesto || 'nuevo'}.pdf`,
+        buffer: Array.from(pdfBytes),
+      });
+      if (result.ok) alert(`PDF guardado en: ${result.ruta}`);
+    } catch (error) {
+      alert('Error al generar PDF: ' + error.message);
+    }
+  };
+
+  const handleGuardarPDF = async () => {
+    await guardar();
+    await generarPDF();
+  };
+
+  const buscarPorNro = async () => {
+    if (!busqueda.trim()) return;
+    try {
+      const q = query(collection(db, 'presupuestos'), where('nroPresupuesto', '==', busqueda.trim()));
       const snap = await getDocs(q);
       if (!snap.empty) {
-        await updateDoc(doc(db, 'presupuestos', snap.docs[0].id), datos);
+        seleccionar({ id: snap.docs[0].id, ...snap.docs[0].data() });
       } else {
-        datos.creadoEn = Timestamp.now();
-        await addDoc(collection(db, 'presupuestos'), datos);
+        alert('No se encontró ningún presupuesto con ese número');
       }
-      alert('Presupuesto guardado correctamente');
-      setVista('tabla');
     } catch (error) {
       alert('Error: ' + error.message);
     }
@@ -81,80 +136,89 @@ export default function Presupuestos() {
     (p.nroPresupuesto || '').toString().includes(busqueda)
   );
 
-  const campo = (label, key, type = 'text') => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <label style={{ fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</label>
-      <input type={type} value={form[key] || ''} onChange={set(key)}
-        style={{ padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: '#F8F8F8', outline: 'none' }} />
-    </div>
-  );
-
+  // ── FORMULARIO ──
   if (vista === 'form') return (
     <div style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-        <button onClick={() => setVista('tabla')}
-          style={{ padding: '7px 16px', background: 'transparent', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}>
-          ← Volver
-        </button>
-        <div style={{ fontSize: 18, fontWeight: 700, color: '#1A1A1A' }}>
-          {form.nroPresupuesto ? `Presupuesto N° ${form.nroPresupuesto}` : 'Nuevo Presupuesto'}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={() => setVista('tabla')}
+            style={{ padding: '7px 16px', background: 'transparent', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}>
+            ← Volver
+          </button>
+          <div style={{ fontSize: 18, fontWeight: 700, color: '#1A1A1A' }}>
+            {form.nroPresupuesto ? `Presupuesto N° ${form.nroPresupuesto}` : 'Nuevo Presupuesto'}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={guardar} disabled={guardando}
+            style={{ padding: '9px 20px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            {guardando ? 'Guardando...' : 'Guardar'}
+          </button>
+          <button onClick={generarPDF}
+            style={{ padding: '9px 20px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            Solo PDF
+          </button>
+          <button onClick={handleGuardarPDF} disabled={guardando}
+            style={{ padding: '9px 20px', background: '#1A1A1A', color: '#F5C400', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+            Guardar y PDF
+          </button>
         </div>
       </div>
 
-      <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #E0E0E0', padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#F5C400', textTransform: 'uppercase', letterSpacing: 1 }}>Datos Generales</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {campo('Nro. Presupuesto', 'nroPresupuesto')}
-          {campo('Cliente', 'cliente')}
-          {campo('Fecha', 'fecha')}
-          {campo('Vigencia', 'vigencia')}
-          {campo('Origen', 'origen')}
-          {campo('Destino', 'destino')}
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#F5C400', textTransform: 'uppercase', letterSpacing: 1 }}>Salida / Retorno</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16 }}>
-          {campo('Fecha Salida', 'salidaFecha')}
-          {campo('Hora Salida', 'salidaHora')}
-          {campo('Fecha Retorno', 'retornoFecha')}
-          {campo('Hora Retorno', 'retornoHora')}
-        </div>
-
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#F5C400', textTransform: 'uppercase', letterSpacing: 1 }}>Vehículo y Servicios</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {campo('Movimiento', 'movimiento')}
-          {campo('Adicionales', 'adicionales')}
-          {campo('Cant Mov', 'cantMov')}
-          {campo('Cant Adi', 'cantAdi')}
-          {campo('Aloj y Viat a cargo de', 'alojViaticosCargo')}
-          {campo('Import Aloj y Viat', 'importAlojViaticos')}
-          {campo('Capacidad', 'capacidad')}
-        </div>
-
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#F5C400', textTransform: 'uppercase', letterSpacing: 1 }}>Costos</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {campo('Costo Total', 'costoTotal')}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5 }}>Costo + IVA</label>
-            <input value={form.costoIva || ''} readOnly
-              style={{ padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: '#F0F0F0', outline: 'none', color: '#888' }} />
+        {/* DATOS GENERALES */}
+        <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #E0E0E0', padding: 24 }}>
+          {seccionTitulo('Datos Generales')}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginTop: 16 }}>
+            {campo('Nro. Presupuesto', inp(form.nroPresupuesto, set('nroPresupuesto')))}
+            {campo('Cliente', inp(form.cliente, set('cliente')))}
+            {campo('Fecha', inp(form.fecha, set('fecha'), 'DD/MM/AAAA'))}
+            {campo('Vigencia', inp(form.vigencia, set('vigencia'), 'DD/MM/AAAA'))}
+            {campo('Origen', inp(form.origen, set('origen')))}
+            {campo('Destino', inp(form.destino, set('destino')))}
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
-          <button onClick={() => setVista('tabla')}
-            style={{ padding: '10px 24px', background: 'transparent', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>
-            Cancelar
-          </button>
-          <button onClick={guardar}
-            style={{ padding: '10px 24px', background: '#1A1A1A', color: '#F5C400', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-            Guardar
-          </button>
+        {/* SALIDA / RETORNO */}
+        <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #E0E0E0', padding: 24 }}>
+          {seccionTitulo('Salida / Retorno')}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16, marginTop: 16 }}>
+            {campo('Fecha Salida', inp(form.salidaFecha, set('salidaFecha'), 'DD/MM/AAAA'))}
+            {campo('Hora Salida', inp(form.salidaHora, set('salidaHora'), 'HH:MM'))}
+            {campo('Fecha Retorno', inp(form.retornoFecha, set('retornoFecha'), 'DD/MM/AAAA'))}
+            {campo('Hora Retorno', inp(form.retornoHora, set('retornoHora'), 'HH:MM'))}
+          </div>
         </div>
+
+        {/* VEHICULO Y SERVICIOS */}
+        <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #E0E0E0', padding: 24 }}>
+          {seccionTitulo('Vehículo y Servicios')}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginTop: 16 }}>
+            {campo('Movimiento', inp(form.movimiento, set('movimiento')))}
+            {campo('Adicionales', inp(form.adicionales, set('adicionales')))}
+            {campo('Cant. Movimientos', inp(form.cantMov, set('cantMov')))}
+            {campo('Cant. Adicionales', inp(form.cantAdi, set('cantAdi')))}
+            {campo('Aloj. y Viát. a cargo de', inp(form.alojViaticosCargo, set('alojViaticosCargo')))}
+            {campo('Importe Aloj. y Viát.', inp(form.importAlojViaticos, set('importAlojViaticos')))}
+            {campo('Capacidad', inp(form.capacidad, set('capacidad')))}
+          </div>
+        </div>
+
+        {/* COSTOS */}
+        <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #E0E0E0', padding: 24 }}>
+          {seccionTitulo('Costos')}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginTop: 16 }}>
+            {campo('Costo Total', inp(form.costoTotal, set('costoTotal')))}
+            {campo('Costo + IVA (10.5%)', inp(form.costoIva, () => {}, '', 'text', true))}
+          </div>
+        </div>
+
       </div>
     </div>
   );
 
+  // ── TABLA ──
   return (
     <div style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
@@ -165,8 +229,15 @@ export default function Presupuestos() {
         </button>
       </div>
 
-      <input placeholder="Buscar por cliente o número..." value={busqueda} onChange={e => setBusqueda(e.target.value)}
-        style={{ width: '100%', padding: '10px 14px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, marginBottom: 16, background: '#fff', outline: 'none' }} />
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <input placeholder="Buscar por cliente o número..." value={busqueda} onChange={e => setBusqueda(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && buscarPorNro()}
+          style={{ flex: 1, padding: '10px 14px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: '#fff', outline: 'none' }} />
+        <button onClick={buscarPorNro}
+          style={{ padding: '10px 18px', background: '#1A1A1A', color: '#F5C400', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+          Buscar
+        </button>
+      </div>
 
       <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #E0E0E0', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>

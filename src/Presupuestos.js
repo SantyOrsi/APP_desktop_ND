@@ -10,6 +10,25 @@ const hoy = () => {
   return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
 };
 
+// Solo dígitos
+const soloNumeros = (texto) => (texto || '').replace(/[^0-9]/g, '');
+
+// El usuario solo escribe números: las barras se insertan solas después
+// del día (2 dígitos) y del mes (2 dígitos). Corta en 8 dígitos (DDMMAAAA).
+const formatearFecha = (texto) => {
+  const limpio = (texto || '').replace(/[^0-9]/g, '').slice(0, 8);
+  if (limpio.length > 4) return `${limpio.slice(0, 2)}/${limpio.slice(2, 4)}/${limpio.slice(4, 8)}`;
+  if (limpio.length > 2) return `${limpio.slice(0, 2)}/${limpio.slice(2, 4)}`;
+  return limpio;
+};
+
+// Igual que la fecha pero HH:MM (4 dígitos, con ":" automático)
+const formatearHora = (texto) => {
+  const limpio = (texto || '').replace(/[^0-9]/g, '').slice(0, 4);
+  if (limpio.length > 2) return `${limpio.slice(0, 2)}:${limpio.slice(2, 4)}`;
+  return limpio;
+};
+
 const FORM_VACIO = {
   nroPresupuesto: '', cliente: '', fecha: hoy(), vigencia: hoy(),
   origen: '', destino: '', salidaFecha: hoy(), salidaHora: '',
@@ -20,7 +39,8 @@ const FORM_VACIO = {
 
 const inp = (value, onChange, placeholder = '', type = 'text', readOnly = false) => (
   <input type={type} value={value || ''} onChange={onChange} placeholder={placeholder} readOnly={readOnly}
-    style={{ padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: readOnly ? '#F0F0F0' : '#F8F8F8', outline: 'none', width: '100%', color: readOnly ? '#888' : '#1A1A1A' }} />
+    className={readOnly ? '' : 'nd-input'}
+    style={{ padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: readOnly ? '#F0F0F0' : '#F8F8F8', outline: 'none', width: '100%', color: readOnly ? '#888' : '#1A1A1A', transition: 'background 0.15s' }} />
 );
 
 const lbl = (texto) => (
@@ -28,14 +48,39 @@ const lbl = (texto) => (
 );
 
 const campo = (label, children) => (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingRight: 16 }}>
     {lbl(label)}
     {children}
   </div>
 );
 
-const seccionTitulo = (texto) => (
-  <div style={{ fontSize: 11, fontWeight: 700, color: '#F5C400', textTransform: 'uppercase', letterSpacing: 1, borderBottom: '1px solid #F0F0F0', paddingBottom: 8, marginBottom: 4 }}>
+// Tarjeta con barra de título negra (igual que en la app del celu)
+const Seccion = ({ titulo, children }) => (
+  <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #E0E0E0', overflow: 'hidden' }}>
+    <div style={{ background: '#1A1A1A', padding: '10px 24px' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#F5C400', textTransform: 'uppercase', letterSpacing: 1 }}>{titulo}</div>
+    </div>
+    <div style={{ padding: 24 }}>{children}</div>
+  </div>
+);
+
+const btnBuscar = (onClick) => (
+  <button onClick={onClick}
+    style={{ padding: '9px 0', background: '#F5C400', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 700, color: '#1A1A1A', cursor: 'pointer', width: '100%' }}>
+    BUSCAR
+  </button>
+);
+
+const btnChico = (texto, onClick, disabled) => (
+  <button onClick={onClick} disabled={disabled}
+    style={{ padding: '9px 0', background: '#fff', border: '1px solid #1A1A1A', borderRadius: 8, fontSize: 11, fontWeight: 700, color: disabled ? '#CCC' : '#1A1A1A', cursor: disabled ? 'default' : 'pointer', width: '100%', opacity: disabled ? 0.5 : 1 }}>
+    {texto}
+  </button>
+);
+
+const resultadoItem = (texto, onClick) => (
+  <div onClick={onClick}
+    style={{ padding: '8px 10px', background: '#F8F8F8', border: '0.5px solid #E0E0E0', borderRadius: 6, fontSize: 12, marginTop: 4, cursor: 'pointer' }}>
     {texto}
   </div>
 );
@@ -48,8 +93,25 @@ export default function Presupuestos() {
   const [docId, setDocId] = useState(null);
   const [guardando, setGuardando] = useState(false);
 
+  // ── Búsqueda dentro del formulario ──
+  const [busquedaCliente, setBusquedaCliente] = useState('');
+  const [busquedaNro, setBusquedaNro] = useState('');
+  const [resultadosCliente, setResultadosCliente] = useState([]);
+  const [resultadosNro, setResultadosNro] = useState([]);
+
+  // ── Navegación Primero/Anterior/Siguiente/Ultimo ──
+  const listaOrdenada = [...presupuestos].sort((a, b) => Number(a.nroPresupuesto) - Number(b.nroPresupuesto));
+  const indiceActual = listaOrdenada.findIndex((p) => p.id === docId);
+
+  const CAMPOS_FECHA = ['fecha', 'vigencia', 'salidaFecha', 'retornoFecha'];
+  const CAMPOS_HORA = ['salidaHora', 'retornoHora'];
+  const CAMPOS_NUMERICOS = ['nroPresupuesto'];
+
   const set = (key) => (e) => {
-    const val = e.target.value;
+    let val = e.target.value;
+    if (CAMPOS_FECHA.includes(key)) val = formatearFecha(val);
+    else if (CAMPOS_HORA.includes(key)) val = formatearHora(val);
+    else if (CAMPOS_NUMERICOS.includes(key)) val = soloNumeros(val);
     setForm(prev => {
       const updated = { ...prev, [key]: val };
       if (key === 'costoTotal') {
@@ -63,13 +125,49 @@ export default function Presupuestos() {
   const seleccionar = (item) => {
     setForm(item);
     setDocId(item.id);
-    setVista('form');
+    setResultadosCliente([]);
+    setResultadosNro([]);
   };
 
   const nuevo = () => {
     setForm(FORM_VACIO);
     setDocId(null);
     setVista('form');
+  };
+
+  const buscarCliente = () => {
+    if (!busquedaCliente.trim()) return;
+    const encontrados = presupuestos.filter((p) =>
+      (p.cliente || '').toLowerCase().includes(busquedaCliente.trim().toLowerCase())
+    );
+    setResultadosCliente(encontrados);
+    if (encontrados.length === 0) alert('No se encontraron presupuestos con ese cliente');
+  };
+
+  const buscarNro = () => {
+    if (!busquedaNro.trim()) return;
+    const encontrado = presupuestos.find((p) => String(p.nroPresupuesto) === busquedaNro.trim());
+    if (encontrado) {
+      seleccionar(encontrado);
+    } else {
+      alert('No se encontró ningún presupuesto con ese número');
+    }
+  };
+
+  const irPrimero = () => listaOrdenada.length && seleccionar(listaOrdenada[0]);
+  const irUltimo = () => listaOrdenada.length && seleccionar(listaOrdenada[listaOrdenada.length - 1]);
+  const irAnterior = () => indiceActual > 0 && seleccionar(listaOrdenada[indiceActual - 1]);
+  const irSiguiente = () => {
+    if (listaOrdenada.length === 0) return;
+    if (indiceActual >= 0 && indiceActual < listaOrdenada.length - 1) {
+      seleccionar(listaOrdenada[indiceActual + 1]);
+      return;
+    }
+    // Ya estamos en el último (o no hay ninguno cargado): arma uno nuevo
+    // con el próximo número de presupuesto y los campos en blanco.
+    const maxNro = Math.max(0, ...listaOrdenada.map((p) => Number(p.nroPresupuesto) || 0));
+    setForm({ ...FORM_VACIO, nroPresupuesto: String(maxNro + 1) });
+    setDocId(null);
   };
 
   const guardar = async () => {
@@ -111,6 +209,11 @@ export default function Presupuestos() {
     }
   };
 
+  const copiar = () => {
+    navigator.clipboard?.writeText(JSON.stringify(form, null, 2));
+    console.log('COPIAR:', form);
+  };
+
   const handleGuardarPDF = async () => {
     await guardar();
     await generarPDF();
@@ -122,7 +225,9 @@ export default function Presupuestos() {
       const q = query(collection(db, 'presupuestos'), where('nroPresupuesto', '==', busqueda.trim()));
       const snap = await getDocs(q);
       if (!snap.empty) {
-        seleccionar({ id: snap.docs[0].id, ...snap.docs[0].data() });
+        const item = { id: snap.docs[0].id, ...snap.docs[0].data() };
+        seleccionar(item);
+        setVista('form');
       } else {
         alert('No se encontró ningún presupuesto con ese número');
       }
@@ -131,16 +236,48 @@ export default function Presupuestos() {
     }
   };
 
-  const filtrados = presupuestos.filter(p =>
-    (p.cliente || '').toLowerCase().includes(busqueda.toLowerCase()) ||
-    (p.nroPresupuesto || '').toString().includes(busqueda)
-  );
+  // ── Orden de la tabla (click en el encabezado) ──
+  const [orden, setOrden] = useState({ campo: null, asc: true });
+
+  const toggleOrden = (campo) => {
+    setOrden((prev) => (prev.campo === campo ? { campo, asc: !prev.asc } : { campo, asc: true }));
+  };
+
+  // Parsea "DD/MM/AAAA" o "DD/MM/AA" (con o sin hora) a Date, para ordenar por fecha real
+  const aFechaOrden = (fecha, hora) => {
+    if (!fecha) return new Date(0);
+    const [dd, mm, aaaaRaw] = fecha.split('/');
+    if (!dd || !mm || !aaaaRaw) return new Date(0);
+    const aaaa = aaaaRaw.length === 2 ? `20${aaaaRaw}` : aaaaRaw;
+    const [hh = '00', min = '00'] = (hora || '').split(':');
+    return new Date(Number(aaaa), Number(mm) - 1, Number(dd), Number(hh) || 0, Number(min) || 0);
+  };
+
+  const COMPARADORES = {
+    nro: (a, b) => (Number(a.nroPresupuesto) || 0) - (Number(b.nroPresupuesto) || 0),
+    cliente: (a, b) => (a.cliente || '').localeCompare(b.cliente || '', 'es', { sensitivity: 'base' }),
+    origen: (a, b) => (a.origen || '').localeCompare(b.origen || '', 'es', { sensitivity: 'base' }),
+    salida: (a, b) => aFechaOrden(a.salidaFecha, a.salidaHora) - aFechaOrden(b.salidaFecha, b.salidaHora),
+    costo: (a, b) => (Number(a.costoTotal) || 0) - (Number(b.costoTotal) || 0),
+  };
+
+  const filtrados = presupuestos
+    .filter(p =>
+      (p.cliente || '').toLowerCase().includes(busqueda.toLowerCase()) ||
+      (p.nroPresupuesto || '').toString().includes(busqueda)
+    )
+    .sort((a, b) => {
+      if (!orden.campo) return 0;
+      const resultado = COMPARADORES[orden.campo](a, b);
+      return orden.asc ? resultado : -resultado;
+    });
 
   // ── FORMULARIO ──
   if (vista === 'form') return (
     <div style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
+      <style>{`.nd-input:focus { background: #FFF3C4 !important; border-color: #F5C400 !important; }`}</style>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', columnGap: 28, rowGap: 12 }}>
           <button onClick={() => setVista('tabla')}
             style={{ padding: '7px 16px', background: 'transparent', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}>
             ← Volver
@@ -150,6 +287,10 @@ export default function Presupuestos() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={copiar}
+            style={{ padding: '9px 20px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            Copiar
+          </button>
           <button onClick={guardar} disabled={guardando}
             style={{ padding: '9px 20px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             {guardando ? 'Guardando...' : 'Guardar'}
@@ -165,12 +306,36 @@ export default function Presupuestos() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+
+        {/* BÚSQUEDA */}
+        <Seccion titulo="Búsqueda">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', columnGap: 40, rowGap: 22 }}>
+            <div>
+              {campo('Cliente', inp(busquedaCliente, (e) => setBusquedaCliente(e.target.value), 'Buscar por nombre...'))}
+              <div style={{ marginTop: 8 }}>{btnBuscar(buscarCliente)}</div>
+              {resultadosCliente.map((r) => resultadoItem(`${r.cliente} — N° ${r.nroPresupuesto}`, () => seleccionar(r)))}
+            </div>
+            <div>
+              {campo('Nro. Presupuesto', inp(busquedaNro, (e) => setBusquedaNro(e.target.value), 'Buscar por id...'))}
+              <div style={{ marginTop: 8 }}>{btnBuscar(buscarNro)}</div>
+            </div>
+          </div>
+        </Seccion>
+
+        {/* NAVEGAR PRESUPUESTOS */}
+        <Seccion titulo="Navegar Presupuestos">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', columnGap: 28, rowGap: 12 }}>
+            {btnChico('PRIMERO', irPrimero, listaOrdenada.length === 0)}
+            {btnChico('ANTERIOR', irAnterior, indiceActual <= 0)}
+            {btnChico('SIGUIENTE', irSiguiente, listaOrdenada.length === 0)}
+            {btnChico('ULTIMO', irUltimo, listaOrdenada.length === 0)}
+          </div>
+        </Seccion>
 
         {/* DATOS GENERALES */}
-        <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #E0E0E0', padding: 24 }}>
-          {seccionTitulo('Datos Generales')}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginTop: 16 }}>
+        <Seccion titulo="Datos Generales">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 22 }}>
             {campo('Nro. Presupuesto', inp(form.nroPresupuesto, set('nroPresupuesto')))}
             {campo('Cliente', inp(form.cliente, set('cliente')))}
             {campo('Fecha', inp(form.fecha, set('fecha'), 'DD/MM/AAAA'))}
@@ -178,23 +343,21 @@ export default function Presupuestos() {
             {campo('Origen', inp(form.origen, set('origen')))}
             {campo('Destino', inp(form.destino, set('destino')))}
           </div>
-        </div>
+        </Seccion>
 
         {/* SALIDA / RETORNO */}
-        <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #E0E0E0', padding: 24 }}>
-          {seccionTitulo('Salida / Retorno')}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16, marginTop: 16 }}>
+        <Seccion titulo="Salida / Retorno">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', columnGap: 36, rowGap: 22 }}>
             {campo('Fecha Salida', inp(form.salidaFecha, set('salidaFecha'), 'DD/MM/AAAA'))}
             {campo('Hora Salida', inp(form.salidaHora, set('salidaHora'), 'HH:MM'))}
             {campo('Fecha Retorno', inp(form.retornoFecha, set('retornoFecha'), 'DD/MM/AAAA'))}
             {campo('Hora Retorno', inp(form.retornoHora, set('retornoHora'), 'HH:MM'))}
           </div>
-        </div>
+        </Seccion>
 
         {/* VEHICULO Y SERVICIOS */}
-        <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #E0E0E0', padding: 24 }}>
-          {seccionTitulo('Vehículo y Servicios')}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginTop: 16 }}>
+        <Seccion titulo="Vehículo y Servicios">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 22 }}>
             {campo('Movimiento', inp(form.movimiento, set('movimiento')))}
             {campo('Adicionales', inp(form.adicionales, set('adicionales')))}
             {campo('Cant. Movimientos', inp(form.cantMov, set('cantMov')))}
@@ -203,16 +366,15 @@ export default function Presupuestos() {
             {campo('Importe Aloj. y Viát.', inp(form.importAlojViaticos, set('importAlojViaticos')))}
             {campo('Capacidad', inp(form.capacidad, set('capacidad')))}
           </div>
-        </div>
+        </Seccion>
 
         {/* COSTOS */}
-        <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #E0E0E0', padding: 24 }}>
-          {seccionTitulo('Costos')}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginTop: 16 }}>
+        <Seccion titulo="Costos">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 22 }}>
             {campo('Costo Total', inp(form.costoTotal, set('costoTotal')))}
             {campo('Costo + IVA (10.5%)', inp(form.costoIva, () => {}, '', 'text', true))}
           </div>
-        </div>
+        </Seccion>
 
       </div>
     </div>
@@ -243,8 +405,24 @@ export default function Presupuestos() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr>
-              {['Nro', 'Cliente', 'Origen → Destino', 'Salida', 'Costo Total', 'Estado'].map(h => (
-                <th key={h} style={{ padding: '10px 20px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '0.5px solid #F0F0F0' }}>{h}</th>
+              {[
+                { label: 'Nro', campo: 'nro' },
+                { label: 'Cliente', campo: 'cliente' },
+                { label: 'Origen → Destino', campo: 'origen' },
+                { label: 'Salida', campo: 'salida' },
+                { label: 'Costo Total', campo: 'costo' },
+                { label: 'Estado', campo: null },
+              ].map(({ label, campo }) => (
+                <th key={label}
+                  onClick={() => campo && toggleOrden(campo)}
+                  style={{
+                    padding: '10px 20px', textAlign: 'left', fontSize: 10, fontWeight: 600,
+                    color: orden.campo === campo ? '#1A1A1A' : '#888', textTransform: 'uppercase',
+                    letterSpacing: 0.5, borderBottom: '0.5px solid #F0F0F0',
+                    cursor: campo ? 'pointer' : 'default', userSelect: 'none',
+                  }}>
+                  {label}{campo && orden.campo === campo ? (orden.asc ? ' ▲' : ' ▼') : ''}
+                </th>
               ))}
             </tr>
           </thead>
@@ -255,7 +433,7 @@ export default function Presupuestos() {
               <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: '#888' }}>No hay presupuestos</td></tr>
             ) : (
               filtrados.map(row => (
-                <tr key={row.id} onClick={() => seleccionar(row)} style={{ cursor: 'pointer' }}
+                <tr key={row.id} onClick={() => { seleccionar(row); setVista('form'); }} style={{ cursor: 'pointer' }}
                   onMouseEnter={e => e.currentTarget.style.background = '#FAFAFA'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                   <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.nroPresupuesto || '-'}</td>

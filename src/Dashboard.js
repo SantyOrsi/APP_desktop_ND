@@ -9,6 +9,7 @@ import { useColeccion } from './hooks/useFirestore';
 import { useSolicitudes } from './hooks/useSolicitudes';
 
 import Presupuestos from './Presupuestos';
+import Contratos from './Contratos';
 
 import {
   Chart as ChartJS,
@@ -961,6 +962,16 @@ export default function Dashboard({
       if (seccion === 'presupuestos') {
 
         return <Presupuestos />;
+
+      }
+
+      // ==========================================
+      // CONTRATOS
+      // ==========================================
+
+      if (seccion === 'contratos') {
+
+        return <Contratos />;
 
       }
 

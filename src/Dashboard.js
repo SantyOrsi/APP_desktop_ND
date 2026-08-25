@@ -12,6 +12,7 @@ import Presupuestos from './Presupuestos';
 import Contratos from './Contratos';
 import Servicios from './Servicios';
 import Agenda from './Agenda';
+import Usuarios from './Usuarios';
 
 import {
   Chart as ChartJS,
@@ -999,6 +1000,11 @@ export default function Dashboard({
       return <Agenda />;
 
     }
+     // ==========================================
+    // AGENDA
+    // ==========================================
+
+    if (seccion === 'usuarios' && rol === 'admin') return <Usuarios />;
 
 
     // ==========================================

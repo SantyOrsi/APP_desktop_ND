@@ -34,9 +34,11 @@ app.on('activate', () => {
 // esta línea (CARPETA_PDFS_CONTRATOS); todo lo demás ya está armado.
 const CARPETA_PDFS_PRESUPUESTOS = 'D:\\Proyectos\\Pdfs';
 const CARPETA_PDFS_CONTRATOS = CARPETA_PDFS_PRESUPUESTOS; // por ahora, la misma carpeta
+const CARPETA_PDFS_SERVICIOS = CARPETA_PDFS_PRESUPUESTOS; // por ahora, la misma carpeta
 
 const carpetaSegunTipo = (tipo) => {
   if (tipo === 'contrato') return CARPETA_PDFS_CONTRATOS;
+  if (tipo === 'servicio') return CARPETA_PDFS_SERVICIOS;
   return CARPETA_PDFS_PRESUPUESTOS;
 };
 

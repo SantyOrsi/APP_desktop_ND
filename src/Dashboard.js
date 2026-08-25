@@ -10,6 +10,8 @@ import { useSolicitudes } from './hooks/useSolicitudes';
 
 import Presupuestos from './Presupuestos';
 import Contratos from './Contratos';
+import Servicios from './Servicios';
+import Agenda from './Agenda';
 
 import {
   Chart as ChartJS,
@@ -953,6 +955,7 @@ export default function Dashboard({
         );
 
       }
+      
 
 
       // ==========================================
@@ -974,6 +977,26 @@ export default function Dashboard({
         return <Contratos />;
 
       }
+
+      // ==========================================
+      // SERVICIOS
+      // ==========================================
+
+      if (seccion === 'servicios') {
+
+        return <Servicios />;
+
+      }
+
+    }
+
+    // ==========================================
+    // AGENDA
+    // ==========================================
+
+    if (seccion === 'agenda') {
+
+      return <Agenda />;
 
     }
 

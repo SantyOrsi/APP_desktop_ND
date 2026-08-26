@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from './constants/firebase';
 import { collection, getDocs, doc, writeBatch, addDoc, serverTimestamp } from 'firebase/firestore';
-import { recomendarUnidad } from './constants/flota';
+import { recomendarUnidad, FLOTA } from './constants/flota';
 
 const DIAS_SEMANA = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo'];
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -166,18 +166,30 @@ export default function Agenda() {
     return d;
   });
 
+  // Dado un código de unidad específica (ej: "16" o "RANGER"), devuelve
+  // "Categoría (N° código)"; si ya es un nombre genérico (dato viejo o
+  // categoría sin sub-unidades), lo deja igual.
+  const formatearUnidad = (valor) => {
+    const categoria = FLOTA.find((fl) => fl.subUnidades?.includes(valor));
+    return categoria ? `${categoria.nombre} (N° ${valor})` : valor;
+  };
+
   const filaDeServicio = (s) => {
-    const sugerida = recomendarUnidad(s.capacidad);
+    const unidadesAsignadas = Array.isArray(s.unidad) ? s.unidad.filter(Boolean) : (s.unidad ? [s.unidad] : []);
+    const unidadContratada = unidadesAsignadas.length
+      ? unidadesAsignadas.map(formatearUnidad).join(', ')
+      : (recomendarUnidad(s.capacidad)?.nombre || '-');
+
     return {
       contratante: s.contacto || '-',
-      unidadContratada: sugerida?.nombre || '-',
+      unidadContratada,
       localidadSalida: s.domicilioOrigen || '-',
       localidadDestino: s.domicilioDestino || '-',
       alojViaticos: s.alojViaticos || '-',
       horaSalida: s.salidaHora || '-',
       diaRegreso: s.retornoFecha || '-',
       horaRegreso: s.retornoHora || '-',
-      movilAsignado: Array.isArray(s.unidad) ? (s.unidad.length ? s.unidad.join(', ') : 'Sin asignar') : (s.unidad || 'Sin asignar'),
+      movilAsignado: unidadesAsignadas.length ? unidadesAsignadas.map(formatearUnidad).join(', ') : 'Sin asignar',
       choferes: Array.isArray(s.chofer) ? (s.chofer.length ? s.chofer.join(', ') : 'Sin asignar') : (s.chofer || 'Sin asignar'),
       nroContrato: s.nropresupuesto || '-',
       observacion: s.observaciones || '-',

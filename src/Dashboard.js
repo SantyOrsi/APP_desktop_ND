@@ -14,6 +14,7 @@ import Servicios from './Servicios';
 import Agenda from './Agenda';
 import Usuarios from './Usuarios';
 import ChatGeneral from './ChatGeneral';
+import Logistica from './Logistica';
 
 import {
   Chart as ChartJS,
@@ -65,6 +66,12 @@ const NAV = [
     id: 'contratos',
     label: 'Contratos',
     icon: 'ti-contract'
+  },
+
+  {
+    id: 'logistica',
+    label: 'Logistica',
+    icon: 'ti-truck'
   },
 
   { section: 'Sistema' },
@@ -819,7 +826,8 @@ export default function Dashboard({
     const seccionesConPermiso = [
       'servicios',
       'presupuestos',
-      'contratos'
+      'contratos',
+      'logistica'
     ];
 
 
@@ -992,6 +1000,12 @@ export default function Dashboard({
       if (seccion === 'servicios') {
 
         return <Servicios />;
+
+      }
+
+      if (seccion === 'logistica') {
+
+        return <Logistica />;
 
       }
 
@@ -1963,6 +1977,11 @@ export default function Dashboard({
 
               );
 
+            }
+
+            // Solo admin puede ver "Usuarios" en el menú
+            if (item.id === 'usuarios' && rol !== 'admin') {
+              return null;
             }
 
 

@@ -13,6 +13,7 @@ import Contratos from './Contratos';
 import Servicios from './Servicios';
 import Agenda from './Agenda';
 import Usuarios from './Usuarios';
+import ChatGeneral from './ChatGeneral';
 
 import {
   Chart as ChartJS,
@@ -72,6 +73,11 @@ const NAV = [
     id: 'agenda',
     label: 'Agenda',
     icon: 'ti-calendar'
+  },
+    {
+    id: 'chat',
+    label: 'Chat General',
+    icon: '  💬 '
   },
 
   {
@@ -1007,6 +1013,13 @@ export default function Dashboard({
     if (seccion === 'usuarios' && rol === 'admin') return <Usuarios />;
 
 
+    // ==========================================
+    // Chat
+    // ==========================================
+
+   if (seccion === 'chat') {
+      return <ChatGeneral />;
+    }
     // ==========================================
     // PERMISOS DE TABLAS
     // ==========================================

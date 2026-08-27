@@ -413,6 +413,7 @@ export default function Presupuestos() {
             {campo('Vigencia', inp(form.vigencia, set('vigencia'), 'DD/MM/AAAA'))}
             {campo('Origen', inp(form.origen, set('origen')))}
             {campo('Destino', inp(form.destino, set('destino')))}
+            {campo('Km. a Recorrer', inp(form.kmRecorrer, set('kmRecorrer'), '0'))}
           </div>
         </Seccion>
 

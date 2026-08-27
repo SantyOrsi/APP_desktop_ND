@@ -1,26 +1,50 @@
 {
+  "name": "nuevo-destino",
+  "version": "1.0.0",
+  "description": "Sistema de gestión interno Nuevo Destino Viajes",
+  "author": "DEF UX",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "build": "webpack --mode development",
-    "dev": "webpack --mode development --watch"
+    "dist": "npm run build && electron-builder"
   },
-  "dependencies": {
-    "chart.js": "^4.5.1",
-    "firebase": "^12.18.0",
-    "pdf-lib": "^1.17.1",
-    "react": "^19.2.8",
-    "react-chartjs-2": "^5.3.1",
-    "react-dom": "^19.2.8"
+  "build": {
+    "appId": "com.defux.nuevodestino",
+    "productName": "Nuevo Destino",
+    "win": {
+      "target": "nsis",
+      "icon": "public/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "public/icon.ico",
+      "uninstallerIcon": "public/icon.ico"
+    },
+    "files": [
+      "dist/**/*",
+      "main.js",
+      "package.json"
+    ]
   },
   "devDependencies": {
-    "@babel/core": "^8.0.1",
-    "@babel/preset-env": "^8.0.2",
-    "@babel/preset-react": "^8.0.1",
-    "babel-loader": "^10.1.1",
-    "electron": "^43.4.1",
-    "html-webpack-plugin": "^5.6.8",
-    "webpack": "^5.109.2",
-    "webpack-cli": "^7.2.2"
+    "@babel/core": "^7.0.0",
+    "@babel/preset-env": "^7.0.0",
+    "@babel/preset-react": "^7.0.0",
+    "babel-loader": "^9.0.0",
+    "electron": "^43.0.0",
+    "electron-builder": "^26.0.0",
+    "html-webpack-plugin": "^5.0.0",
+    "webpack": "^5.0.0",
+    "webpack-cli": "^5.0.0"
+  },
+  "dependencies": {
+    "chart.js": "^4.0.0",
+    "firebase": "^10.0.0",
+    "pdf-lib": "^1.0.0",
+    "react": "^18.0.0",
+    "react-chartjs-2": "^5.0.0",
+    "react-dom": "^18.0.0"
   }
 }

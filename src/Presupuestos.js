@@ -3,7 +3,6 @@ import { useColeccion } from './hooks/useFirestore';
 import { db } from './constants/firebase';
 import { collection, addDoc, updateDoc, doc, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import { generarPresupuestoPDF } from './helpers/generarPresupuestoPDF';
-const { ipcRenderer } = window.require('electron');
 
 const hoy = () => {
   const d = new Date();
@@ -31,16 +30,33 @@ const formatearHora = (texto) => {
 
 const FORM_VACIO = {
   nroPresupuesto: '', cliente: '', fecha: hoy(), vigencia: hoy(),
-  origen: '', destino: '', salidaFecha: hoy(), salidaHora: '',
-  retornoFecha: '', retornoHora: '', movimiento: '', adicionales: '',
-  cantMov: '', cantAdi: '', alojViaticosCargo: '', importAlojViaticos: '',
-  capacidad: '', costoTotal: '', costoIva: '', estado: 'pendiente',
+  origen: '', destino: '', kmRecorrer: '', salidaFecha: hoy(), salidaHora: '',
+  retornoFecha: '', retornoHora: '', movimiento: 'NO', movimientoDetalle: '',
+  adicionales: 'NO', adicionalesDetalle: '', alojViaticosCargo: '',
+  importAlojViaticos: '', capacidad: '', tipoTransporte: '', costoTotal: '', costoIva: '', estado: 'pendiente',
 };
 
 const inp = (value, onChange, placeholder = '', type = 'text', readOnly = false) => (
   <input type={type} value={value || ''} onChange={onChange} placeholder={placeholder} readOnly={readOnly}
     className={readOnly ? '' : 'nd-input'}
     style={{ padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: readOnly ? '#F0F0F0' : '#F8F8F8', outline: 'none', width: '100%', color: readOnly ? '#888' : '#1A1A1A', transition: 'background 0.15s' }} />
+);
+
+const txtArea = (value, onChange, placeholder = '', rows = 3) => (
+  <textarea value={value || ''} onChange={onChange} placeholder={placeholder} rows={rows}
+    className="nd-input"
+    style={{ padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: '#F8F8F8', outline: 'none', width: '100%', color: '#1A1A1A', resize: 'vertical', fontFamily: 'inherit', transition: 'background 0.15s' }} />
+);
+
+const sel = (value, onChange, options = []) => (
+  <select value={value || 'NO'} onChange={onChange} className="nd-input"
+    style={{ padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: '#F8F8F8', outline: 'none', width: '100%', color: '#1A1A1A', cursor: 'pointer', transition: 'background 0.15s' }}>
+    {options.map((opt) => (
+      <option key={opt.value} value={opt.value}>
+        {opt.label}
+      </option>
+    ))}
+  </select>
 );
 
 const lbl = (texto) => (
@@ -54,7 +70,7 @@ const campo = (label, children) => (
   </div>
 );
 
-// Tarjeta con barra de título negra (igual que en la app del celu)
+// Tarjeta con barra de título negra
 const Seccion = ({ titulo, children }) => (
   <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #E0E0E0', overflow: 'hidden' }}>
     <div style={{ background: '#1A1A1A', padding: '10px 24px' }}>
@@ -105,7 +121,24 @@ export default function Presupuestos() {
 
   const CAMPOS_FECHA = ['fecha', 'vigencia', 'salidaFecha', 'retornoFecha'];
   const CAMPOS_HORA = ['salidaHora', 'retornoHora'];
-  const CAMPOS_NUMERICOS = ['nroPresupuesto'];
+  const CAMPOS_NUMERICOS = ['nroPresupuesto', 'kmRecorrer'];
+
+  // Función para obtener el próximo número de presupuesto (autoincremental arrancando en 1)
+  const obtenerProximoNro = () => {
+    const numeros = presupuestos.map((p) => Number(p.nroPresupuesto)).filter((n) => !isNaN(n) && n > 0);
+    const maxNro = numeros.length > 0 ? Math.max(...numeros) : 0;
+    return String(maxNro + 1);
+  };
+
+  // Suma días a una fecha "DD/MM/AAAA" y devuelve "DD/MM/AAAA"
+  const sumarDias = (fecha, dias) => {
+    if (!fecha) return '';
+    const [dd, mm, aaaa] = fecha.split('/');
+    if (!dd || !mm || !aaaa) return fecha;
+    const d = new Date(Number(aaaa), Number(mm) - 1, Number(dd));
+    d.setDate(d.getDate() + dias);
+    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+  };
 
   const set = (key) => (e) => {
     let val = e.target.value;
@@ -114,6 +147,9 @@ export default function Presupuestos() {
     else if (CAMPOS_NUMERICOS.includes(key)) val = soloNumeros(val);
     setForm(prev => {
       const updated = { ...prev, [key]: val };
+      if (key === 'fecha') {
+        updated.vigencia = sumarDias(val, 30);
+      }
       if (key === 'costoTotal') {
         const total = parseFloat(val);
         updated.costoIva = !isNaN(total) ? (total * 1.105).toFixed(2) : '';
@@ -130,7 +166,8 @@ export default function Presupuestos() {
   };
 
   const nuevo = () => {
-    setForm(FORM_VACIO);
+    const proximoNro = obtenerProximoNro();
+    setForm({ ...FORM_VACIO, nroPresupuesto: proximoNro });
     setDocId(null);
     setVista('form');
   };
@@ -163,19 +200,32 @@ export default function Presupuestos() {
       seleccionar(listaOrdenada[indiceActual + 1]);
       return;
     }
-    // Ya estamos en el último (o no hay ninguno cargado): arma uno nuevo
-    // con el próximo número de presupuesto y los campos en blanco.
-    const maxNro = Math.max(0, ...listaOrdenada.map((p) => Number(p.nroPresupuesto) || 0));
-    setForm({ ...FORM_VACIO, nroPresupuesto: String(maxNro + 1) });
+    const proximoNro = obtenerProximoNro();
+    setForm({ ...FORM_VACIO, nroPresupuesto: proximoNro });
     setDocId(null);
   };
 
+  const { ipcRenderer } = window.require ? window.require('electron') : {};
+
+  const copiar = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(JSON.stringify(form, null, 2));
+      alert('Datos copiados al portapapeles');
+    }
+  };
+
   const guardar = async () => {
-    if (!form.nroPresupuesto.trim()) { alert('Ingresá un número de presupuesto'); return; }
+    if (!form.nroPresupuesto.trim()) { 
+      alert('Ingresá un número de presupuesto'); 
+      return; 
+    }
     setGuardando(true);
+
     try {
+      // 1. Guardado en Firebase
       const datos = { ...form, actualizadoEn: Timestamp.now() };
       delete datos.id;
+
       if (docId) {
         await updateDoc(doc(db, 'presupuestos', docId), datos);
       } else {
@@ -190,6 +240,20 @@ export default function Presupuestos() {
           setDocId(ref.id);
         }
       }
+
+      // 2. Envío a Google Sheets (con tipoDoc especificado)
+      const webhookUrl = 'https://script.google.com/macros/s/AKfycbzujjs9mK50DDfnhKPJPGKTW7ZtbdqorfmpJKFhAEA1wumTEDr3L5WM8WtRkYNoreUYHQ/exec';
+
+      await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          ...form,
+          tipoDoc: 'presupuesto'
+        })
+      });
+
+      alert('Presupuesto guardado');
     } catch (error) {
       alert('Error al guardar: ' + error.message);
     }
@@ -199,19 +263,21 @@ export default function Presupuestos() {
   const generarPDF = async () => {
     try {
       const pdfBytes = await generarPresupuestoPDF(form);
-      const result = await ipcRenderer.invoke('guardar-pdf', {
-        nombre: `Presupuesto_${form.nroPresupuesto || 'nuevo'}.pdf`,
-        buffer: Array.from(pdfBytes),
-      });
-      if (result.ok) alert(`PDF guardado en: ${result.ruta}`);
+      if (ipcRenderer) {
+        const result = await ipcRenderer.invoke('guardar-pdf', {
+          nombre: `Presupuesto_${form.nroPresupuesto || 'nuevo'}.pdf`,
+          buffer: Array.from(pdfBytes),
+          tipo: 'presupuesto'
+        });
+        if (result.ok) {
+          alert(`PDF guardado en: ${result.ruta}`);
+        } else {
+          alert(`Error al guardar PDF: ${result.error}`);
+        }
+      }
     } catch (error) {
       alert('Error al generar PDF: ' + error.message);
     }
-  };
-
-  const copiar = () => {
-    navigator.clipboard?.writeText(JSON.stringify(form, null, 2));
-    console.log('COPIAR:', form);
   };
 
   const handleGuardarPDF = async () => {
@@ -236,14 +302,13 @@ export default function Presupuestos() {
     }
   };
 
-  // ── Orden de la tabla (click en el encabezado) ──
+  // ── Orden de la tabla ──
   const [orden, setOrden] = useState({ campo: null, asc: true });
 
   const toggleOrden = (campo) => {
     setOrden((prev) => (prev.campo === campo ? { campo, asc: !prev.asc } : { campo, asc: true }));
   };
 
-  // Parsea "DD/MM/AAAA" o "DD/MM/AA" (con o sin hora) a Date, para ordenar por fecha real
   const aFechaOrden = (fecha, hora) => {
     if (!fecha) return new Date(0);
     const [dd, mm, aaaaRaw] = fecha.split('/');
@@ -271,6 +336,12 @@ export default function Presupuestos() {
       const resultado = COMPARADORES[orden.campo](a, b);
       return orden.asc ? resultado : -resultado;
     });
+
+  // Opciones para los selects de SÍ/NO
+  const opcionesSiNo = [
+    { label: 'NO', value: 'NO' },
+    { label: 'SÍ', value: 'SI' }
+  ];
 
   // ── FORMULARIO ──
   if (vista === 'form') return (
@@ -336,7 +407,7 @@ export default function Presupuestos() {
         {/* DATOS GENERALES */}
         <Seccion titulo="Datos Generales">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 22 }}>
-            {campo('Nro. Presupuesto', inp(form.nroPresupuesto, set('nroPresupuesto')))}
+            {campo('Nro. Presupuesto', inp(form.nroPresupuesto, () => {}, '', 'text', true))}
             {campo('Cliente', inp(form.cliente, set('cliente')))}
             {campo('Fecha', inp(form.fecha, set('fecha'), 'DD/MM/AAAA'))}
             {campo('Vigencia', inp(form.vigencia, set('vigencia'), 'DD/MM/AAAA'))}
@@ -357,14 +428,29 @@ export default function Presupuestos() {
 
         {/* VEHICULO Y SERVICIOS */}
         <Seccion titulo="Vehículo y Servicios">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 22 }}>
-            {campo('Movimiento', inp(form.movimiento, set('movimiento')))}
-            {campo('Adicionales', inp(form.adicionales, set('adicionales')))}
-            {campo('Cant. Movimientos', inp(form.cantMov, set('cantMov')))}
-            {campo('Cant. Adicionales', inp(form.cantAdi, set('cantAdi')))}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', columnGap: 36, rowGap: 22, alignItems: 'start' }}>
+            <div>
+              {campo('Movimiento', sel(form.movimiento, set('movimiento'), opcionesSiNo))}
+              {form.movimiento === 'SI' && (
+                <div style={{ marginTop: 8 }}>
+                  {inp(form.movimientoDetalle, set('movimientoDetalle'), 'Detallar movimientos...')}
+                </div>
+              )}
+            </div>
+
+            <div>
+              {campo('Adicionales', sel(form.adicionales, set('adicionales'), opcionesSiNo))}
+              {form.adicionales === 'SI' && (
+                <div style={{ marginTop: 8 }}>
+                  {inp(form.adicionalesDetalle, set('adicionalesDetalle'), 'Detallar adicionales...')}
+                </div>
+              )}
+            </div>
+
             {campo('Aloj. y Viát. a cargo de', inp(form.alojViaticosCargo, set('alojViaticosCargo')))}
             {campo('Importe Aloj. y Viát.', inp(form.importAlojViaticos, set('importAlojViaticos')))}
-            {campo('Capacidad', inp(form.capacidad, set('capacidad')))}
+            {campo('Cap. Transporte', inp(form.capacidad, set('capacidad')))}
+            {campo('Tipo Transporte', txtArea(form.tipoTransporte, set('tipoTransporte'), 'Detallar características o tipo de transporte...', 3))}
           </div>
         </Seccion>
 

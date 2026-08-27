@@ -29,12 +29,10 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
-// ── Guardar PDF (usado por "Solo PDF" / "Guardar y PDF") ──
-// Cuando tengan la carpeta definitiva de Contratos, solo hay que cambiar
-// esta línea (CARPETA_PDFS_CONTRATOS); todo lo demás ya está armado.
-const CARPETA_PDFS_PRESUPUESTOS = 'D:\\Proyectos\\Pdfs';
-const CARPETA_PDFS_CONTRATOS = CARPETA_PDFS_PRESUPUESTOS; // por ahora, la misma carpeta
-const CARPETA_PDFS_SERVICIOS = CARPETA_PDFS_PRESUPUESTOS; // por ahora, la misma carpeta
+// ── Guardar PDF (Rutas para Máquina Virtual en Disco D:) ──
+const CARPETA_PDFS_PRESUPUESTOS = 'D:/SISTEMAS/PRESUPUESTOS';
+const CARPETA_PDFS_CONTRATOS   = 'D:/SISTEMAS/CONTRATOS';
+const CARPETA_PDFS_SERVICIOS   = 'D:/SISTEMAS/SERVICIOS';
 
 const carpetaSegunTipo = (tipo) => {
   if (tipo === 'contrato') return CARPETA_PDFS_CONTRATOS;
@@ -52,6 +50,7 @@ ipcMain.handle('guardar-pdf', async (event, { nombre, buffer, tipo }) => {
     fs.writeFileSync(filePath, Buffer.from(buffer));
     return { ok: true, ruta: filePath };
   } catch (error) {
+    console.error('Error guardando PDF:', error);
     return { ok: false, error: error.message };
   }
 });

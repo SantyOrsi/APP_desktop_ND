@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useColeccion } from './hooks/useFirestore';
 import { db } from './constants/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, where, getDocs } from 'firebase/firestore';
@@ -72,7 +72,7 @@ const btnChico = (texto, onClick, disabled) => (
 );
 
 const resultadoItem = (texto, onClick) => (
-  <div onClick={onClick}
+  <div onClick={onClick} onMouseDown={(e) => e.preventDefault()}
     style={{ padding: '8px 10px', background: '#F8F8F8', border: '0.5px solid #E0E0E0', borderRadius: 6, fontSize: 12, marginTop: 4, cursor: 'pointer' }}>
     {texto}
   </div>
@@ -109,6 +109,7 @@ export default function Contratos() {
   const bloqueado = !desbloqueado;
 
   const [sugerenciasClienteDatos, setSugerenciasClienteDatos] = useState([]);
+  const [clienteEnfocado, setClienteEnfocado] = useState(false);
 
   const CAMPOS_FECHA = ['fechaContrato', 'fechaCancelacion'];
   const CAMPOS_NUMERICOS = ['cuitDni', 'telefono', 'senia', 'saldo'];
@@ -134,25 +135,31 @@ export default function Contratos() {
       }
       return updated;
     });
-
-    if (key === 'clienteNombre') {
-      const filtro = val.trim().toLowerCase();
-      if (!filtro) { setSugerenciasClienteDatos([]); return; }
-      const vistos = new Set();
-      const encontrados = [];
-      for (const c of contratos) {
-        const nombre = (c.clienteNombre || '').trim();
-        if (!nombre || !nombre.toLowerCase().includes(filtro)) continue;
-        const clave = nombre.toLowerCase();
-        if (vistos.has(clave)) continue;
-        vistos.add(clave);
-        encontrados.push(c);
-        if (encontrados.length >= 6) break;
-      }
-      setSugerenciasClienteDatos(encontrados);
-    }
   };
 
+  // Sugerencias de Cliente: se recalculan solas cada vez que cambia el
+  // nombre, sea porque lo tipeaste vos o porque se completó solo al
+  // presionar ALTA CONTRATO (antes solo reaccionaba si lo escribías).
+  useEffect(() => {
+    const filtro = (form.clienteNombre || '').trim().toLowerCase();
+    if (!filtro) { setSugerenciasClienteDatos([]); return; }
+    const vistos = new Set();
+    const encontrados = [];
+    for (const c of contratos) {
+      const nombre = (c.clienteNombre || '').trim();
+      if (!nombre || !nombre.toLowerCase().includes(filtro)) continue;
+      if (nombre.toLowerCase() === filtro) continue; // no sugerir el mismo que ya está puesto
+      const clave = nombre.toLowerCase();
+      if (vistos.has(clave)) continue;
+      vistos.add(clave);
+      encontrados.push(c);
+      if (encontrados.length >= 6) break; // límite de 6 sugerencias
+    }
+    setSugerenciasClienteDatos(encontrados);
+  }, [form.clienteNombre, contratos]);
+
+  // Al elegir una sugerencia: autocompleta Cuit-Dni, Teléfono y Domicilio
+  // con los de ese contrato anterior del mismo cliente.
   const elegirSugerenciaCliente = (c) => {
     setForm((prev) => ({
       ...prev,
@@ -562,11 +569,22 @@ const eliminarOMoverAPapeleraContrato = async (contratoId, nroPresupuesto) => {
         <Seccion titulo="Datos Cliente">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 22 }}>
             <div>
-              {campo('Cliente', inp(form.clienteNombre, set('clienteNombre'), '', 'text', bloqueado))}
-              {!bloqueado && sugerenciasClienteDatos.length > 0 && (
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5 }}>Cliente</label>
+              <input
+                type="text"
+                value={form.clienteNombre || ''}
+                onChange={set('clienteNombre')}
+                readOnly={bloqueado}
+                onFocus={() => setClienteEnfocado(true)}
+                onBlur={() => setClienteEnfocado(false)}
+                onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                className={bloqueado ? '' : 'nd-input'}
+                style={{ padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: bloqueado ? '#F0F0F0' : '#F8F8F8', outline: 'none', width: '100%', color: bloqueado ? '#888' : '#1A1A1A', transition: 'background 0.15s' }}
+              />
+              {!bloqueado && clienteEnfocado && sugerenciasClienteDatos.length > 0 && (
                 <div style={{ marginTop: 4 }}>
                   {sugerenciasClienteDatos.map((c) =>
-                    resultadoItem(c.clienteNombre, () => elegirSugerenciaCliente(c))
+                    resultadoItem(c.clienteNombre, () => { elegirSugerenciaCliente(c); setClienteEnfocado(false); })
                   )}
                 </div>
               )}

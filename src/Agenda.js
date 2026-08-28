@@ -51,21 +51,93 @@ const calcularEstado = (salida, retorno, hoyDate) => {
   return 'enRuta';
 };
 
+// ── Íconos simples por categoría de unidad ──
+const IconoVehiculo = ({ tipo, size = 30 }) => {
+  const props = { width: size, height: size * (32 / 48), viewBox: '0 0 48 32' };
+  if (tipo === 'auto') {
+    return (
+      <svg {...props}>
+        <path d="M6 22 L10 12 Q12 9 16 9 L30 9 Q34 9 36 12 L40 22 Z" fill="#1A1A1A" />
+        <rect x="2" y="20" width="44" height="6" rx="3" fill="#1A1A1A" />
+        <circle cx="12" cy="27" r="4" fill="#666" />
+        <circle cx="36" cy="27" r="4" fill="#666" />
+      </svg>
+    );
+  }
+  if (tipo === 'van') {
+    return (
+      <svg {...props}>
+        <rect x="4" y="8" width="38" height="14" rx="3" fill="#1A1A1A" />
+        <rect x="8" y="11" width="7" height="6" fill="#F5C400" />
+        <rect x="18" y="11" width="7" height="6" fill="#F5C400" />
+        <rect x="2" y="18" width="44" height="6" rx="3" fill="#1A1A1A" />
+        <circle cx="12" cy="27" r="4" fill="#666" />
+        <circle cx="34" cy="27" r="4" fill="#666" />
+      </svg>
+    );
+  }
+  if (tipo === 'mini19' || tipo === 'mini23') {
+    return (
+      <svg {...props}>
+        <rect x="3" y="6" width="42" height="16" rx="3" fill="#1A1A1A" />
+        {[7, 15, 23, 31].map((x) => <rect key={x} x={x} y="9" width="6" height="6" fill="#F5C400" />)}
+        <rect x="1" y="20" width="46" height="5" rx="2.5" fill="#1A1A1A" />
+        <circle cx="11" cy="27" r="4" fill="#666" />
+        <circle cx="37" cy="27" r="4" fill="#666" />
+      </svg>
+    );
+  }
+  if (tipo === 'urbano' || tipo === 'comil') {
+    return (
+      <svg {...props}>
+        <rect x="1" y="5" width="46" height="17" rx="2" fill="#1A1A1A" />
+        {[6, 13, 20, 27, 34].map((x) => <rect key={x} x={x} y="8" width="5" height="6" fill="#F5C400" />)}
+        <rect x="0" y="21" width="48" height="5" rx="2.5" fill="#1A1A1A" />
+        <circle cx="10" cy="28" r="4" fill="#666" />
+        <circle cx="38" cy="28" r="4" fill="#666" />
+      </svg>
+    );
+  }
+  if (tipo === 'dobleP') {
+    return (
+      <svg {...props}>
+        <rect x="1" y="2" width="46" height="20" rx="2" fill="#1A1A1A" />
+        {[5, 12, 19, 26, 33].map((x) => <rect key={'a' + x} x={x} y="4" width="5" height="5" fill="#F5C400" />)}
+        {[5, 12, 19, 26, 33].map((x) => <rect key={'b' + x} x={x} y="12" width="5" height="5" fill="#F5C400" />)}
+        <rect x="0" y="22" width="48" height="4" rx="2" fill="#1A1A1A" />
+        <circle cx="10" cy="28" r="4" fill="#666" />
+        <circle cx="38" cy="28" r="4" fill="#666" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...props}>
+      <rect x="4" y="10" width="40" height="12" rx="3" fill="#999" />
+      <circle cx="12" cy="24" r="4" fill="#666" />
+      <circle cx="36" cy="24" r="4" fill="#666" />
+    </svg>
+  );
+};
+
 export default function Agenda() {
   const hoy = new Date();
   const [mes, setMes] = useState(hoy.getMonth());
   const [anio, setAnio] = useState(hoy.getFullYear());
-  const [porDia, setPorDia] = useState({});
   const [eventosPorDia, setEventosPorDia] = useState({});
   const [servicios, setServicios] = useState([]);
-  const [semanaFecha, setSemanaFecha] = useState(aTexto(hoy)); // referencia de la semana mostrada a la derecha
+  const [contratoPorNro, setContratoPorNro] = useState({}); // nroPresupuesto -> estado del contrato
+  const [filtroPago, setFiltroPago] = useState('pagos'); // SE MODIFICÓ PARA QUE EMPIECE EN PAGOS
+  const [semanaFecha, setSemanaFecha] = useState(aTexto(hoy)); // día de referencia (el que tocaste)
   const [panelIzqVisible, setPanelIzqVisible] = useState(true);
+  const [modoVista, setModoVista] = useState('dia'); // 'dia' | 'semana'
 
   const [modalAbierto, setModalAbierto] = useState(false);
   const [modalFecha, setModalFecha] = useState('');
   const [modalTitulo, setModalTitulo] = useState('');
   const [modalDescripcion, setModalDescripcion] = useState('');
   const [guardandoEvento, setGuardandoEvento] = useState(false);
+
+  const [modalDisponibilidad, setModalDisponibilidad] = useState(false);
 
   const cargarServicios = async () => {
     try {
@@ -75,19 +147,15 @@ export default function Agenda() {
 
       const batch = writeBatch(db);
       let huboCambios = false;
-      const mapa = {};
       const lista = [];
 
       snap.docs.forEach((d) => {
         const data = d.data();
-        lista.push({ id: d.id, ...data });
+        let estadoReal = data.estado || 'pendiente';
 
         const salida = normalizarFecha(data.salidaFecha);
-        if (!salida) return;
         const retorno = normalizarFecha(data.retornoFecha) || salida;
-
-        let estadoReal = data.estado || 'pendiente';
-        if (!ESTADOS_MANUALES.includes(data.estado)) {
+        if (salida && !ESTADOS_MANUALES.includes(data.estado)) {
           estadoReal = calcularEstado(salida, retorno, hoyDate);
           if (estadoReal !== data.estado) {
             batch.update(doc(db, 'servicios', d.id), { estado: estadoReal });
@@ -95,19 +163,27 @@ export default function Agenda() {
           }
         }
 
-        if (!mapa[salida]) mapa[salida] = { estados: new Set(), cantidad: 0, terminaCantidad: 0 };
-        mapa[salida].estados.add(estadoReal);
-        mapa[salida].cantidad += 1;
-
-        if (!mapa[retorno]) mapa[retorno] = { estados: new Set(), cantidad: 0, terminaCantidad: 0 };
-        mapa[retorno].terminaCantidad += 1;
+        lista.push({ id: d.id, ...data, estado: estadoReal });
       });
 
       if (huboCambios) await batch.commit();
-      setPorDia(mapa);
       setServicios(lista);
     } catch (error) {
       console.log('Error al cargar agenda:', error.message);
+    }
+  };
+
+  const cargarContratos = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'contratos'));
+      const mapa = {};
+      snap.docs.forEach((d) => {
+        const data = d.data();
+        if (data.nroPresupuesto) mapa[String(data.nroPresupuesto)] = data.estado || '';
+      });
+      setContratoPorNro(mapa);
+    } catch (error) {
+      console.log('Error al cargar contratos:', error.message);
     }
   };
 
@@ -128,7 +204,7 @@ export default function Agenda() {
     }
   };
 
-  const recargarTodo = () => { cargarServicios(); cargarEventos(); };
+  const recargarTodo = () => { cargarServicios(); cargarContratos(); cargarEventos(); };
 
   useEffect(() => { recargarTodo(); }, []);
 
@@ -155,6 +231,25 @@ export default function Agenda() {
     return null;
   };
 
+  // Filtra por el estado del CONTRATO vinculado. (SE QUITÓ CC)
+  const pasaFiltroPago = (s) => {
+    if (filtroPago === 'todos') return true;
+    const estadoContrato = contratoPorNro[String(s.nropresupuesto)];
+    if (!estadoContrato) return false; // sin contrato cargado, no pasa el filtro
+    if (filtroPago === 'pagos') return ['Señado', 'Pago total'].includes(estadoContrato);
+    return true;
+  };
+
+  const porDia = {};
+  servicios.forEach((s) => {
+    if (!pasaFiltroPago(s)) return;
+    const salida = normalizarFecha(s.salidaFecha);
+    if (!salida) return;
+    if (!porDia[salida]) porDia[salida] = { estados: new Set(), cantidad: 0 };
+    porDia[salida].estados.add(s.estado || 'pendiente');
+    porDia[salida].cantidad += 1;
+  });
+
   // ── Semana (Lunes a Domingo) que contiene semanaFecha ──
   const base = aDate(semanaFecha);
   const offsetLunes = (base.getDay() + 6) % 7;
@@ -166,13 +261,15 @@ export default function Agenda() {
     return d;
   });
 
-  // Dado un código de unidad específica (ej: "16" o "RANGER"), devuelve
-  // "Categoría (N° código)"; si ya es un nombre genérico (dato viejo o
-  // categoría sin sub-unidades), lo deja igual.
+  const diasAMostrar = modoVista === 'dia' ? [base] : semana;
+
   const formatearUnidad = (valor) => {
     const categoria = FLOTA.find((fl) => fl.subUnidades?.includes(valor));
     return categoria ? `${categoria.nombre} (N° ${valor})` : valor;
   };
+
+  const categoriaDeUnidad = (valor) =>
+    FLOTA.find((fl) => fl.subUnidades?.includes(valor)) || FLOTA.find((fl) => fl.nombre === valor) || null;
 
   const filaDeServicio = (s) => {
     const unidadesAsignadas = Array.isArray(s.unidad) ? s.unidad.filter(Boolean) : (s.unidad ? [s.unidad] : []);
@@ -221,6 +318,26 @@ export default function Agenda() {
     setGuardandoEvento(false);
   };
 
+  const unidadesOcupadas = (() => {
+    const d = aDate(semanaFecha);
+    const porCategoria = {};
+    servicios.forEach((s) => {
+      const salida = normalizarFecha(s.salidaFecha);
+      if (!salida) return;
+      const retorno = normalizarFecha(s.retornoFecha) || salida;
+      if (d < aDate(salida) || d > aDate(retorno)) return;
+      const unidades = Array.isArray(s.unidad) ? s.unidad.filter(Boolean) : (s.unidad ? [s.unidad] : []);
+      unidades.forEach((codigo) => {
+        const cat = categoriaDeUnidad(codigo);
+        const catId = cat?.id || 'otro';
+        const catNombre = cat?.nombre || 'Otro';
+        if (!porCategoria[catId]) porCategoria[catId] = { nombre: catNombre, items: [] };
+        porCategoria[catId].items.push({ codigo, cliente: s.contacto || '-' });
+      });
+    });
+    return porCategoria;
+  })();
+
   return (
     <div style={{ padding: 24, height: '100%', display: 'flex', gap: 16, overflow: 'hidden' }}>
 
@@ -249,7 +366,6 @@ export default function Agenda() {
                 const info = porDia[fechaKey];
                 const color = info ? colorParaDia(info.estados) : null;
                 const cantidad = info?.cantidad || 0;
-                const terminaCantidad = info?.terminaCantidad || 0;
                 const tieneEvento = !!eventosPorDia[fechaKey]?.length;
                 const seleccionado = normalizarFecha(semanaFecha) === fechaKey;
 
@@ -265,12 +381,7 @@ export default function Agenda() {
                         <span style={{ fontSize: 11, fontWeight: 700, color: color ? '#1A1A1A' : '#999' }}>{dia}</span>
                         {tieneEvento && <div style={{ width: 6, height: 6, borderRadius: 3, background: COLOR_EVENTO }} />}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 3 }}>
-                        {terminaCantidad > 0 && (
-                          <div style={{ width: 14, height: 14, borderRadius: 7, background: '#E53935', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            <span style={{ fontSize: 8, fontWeight: 700, color: '#fff' }}>{terminaCantidad}</span>
-                          </div>
-                        )}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
                         {cantidad > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: color ? '#1A1A1A' : '#999' }}>{cantidad}</span>}
                       </div>
                     </div>
@@ -294,87 +405,136 @@ export default function Agenda() {
                 <div style={{ width: 8, height: 8, borderRadius: 4, background: COLOR_EVENTO }} />
                 <span style={{ fontSize: 11, color: '#555' }}>Evento</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: 4, background: '#E53935' }} />
-                <span style={{ fontSize: 11, color: '#555' }}>Termina</span>
-              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── PANEL DERECHO: SEMANA DETALLADA ── */}
+      {/* ── PANEL DERECHO: DÍA / SEMANA ── */}
       <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
           <button onClick={() => setPanelIzqVisible((v) => !v)}
             style={{ padding: '7px 14px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             {panelIzqVisible ? '‹ Ocultar calendario' : '› Mostrar calendario'}
           </button>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#1A1A1A' }}>
-            Semana del {aTexto(semana[0])} al {aTexto(semana[6])}
+
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[{ key: 'dia', label: 'Día' }, { key: 'semana', label: 'Semana' }].map((op) => (
+              <button key={op.key} onClick={() => setModoVista(op.key)}
+                style={{
+                  padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  border: modoVista === op.key ? 'none' : '1px solid #E0E0E0',
+                  background: modoVista === op.key ? '#1A1A1A' : '#fff',
+                  color: modoVista === op.key ? '#F5C400' : '#555',
+                }}>
+                {op.label}
+              </button>
+            ))}
           </div>
-          <button onClick={recargarTodo}
+
+          <div style={{ display: 'flex', gap: 6 }}>
+            {/* SE MODIFICARON LAS OPCIONES DE FILTRO */}
+            {[
+              { key: 'pagos', label: 'Señado / Pago total' },
+              { key: 'todos', label: 'Todos' },
+            ].map((op) => (
+              <button key={op.key} onClick={() => setFiltroPago(op.key)}
+                style={{
+                  padding: '7px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                  border: filtroPago === op.key ? 'none' : '1px solid #E0E0E0',
+                  background: filtroPago === op.key ? '#1A1A1A' : '#fff',
+                  color: filtroPago === op.key ? '#F5C400' : '#555',
+                }}>
+                {op.label}
+              </button>
+            ))}
+          </div>
+
+          <button onClick={() => setModalDisponibilidad(true)}
             style={{ marginLeft: 'auto', padding: '7px 14px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            🚐 Disponibilidad Unidades
+          </button>
+          <button onClick={recargarTodo}
+            style={{ padding: '7px 14px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             ↻ Recargar
           </button>
         </div>
 
-        {semana.map((d) => {
-          const fechaStr = aTexto(d);
-          const items = servicios.filter((s) => s.salidaFecha === fechaStr);
-          const eventosDelDia = eventosPorDia[fechaStr] || [];
+        <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #E0E0E0', padding: 20 }}>
+          {diasAMostrar.map((d) => {
+            const fechaStr = aTexto(d);
+            
+            // SE MODIFICÓ LA LÓGICA DE FILTRADO PARA MOSTRAR RANGOS EN VISTA "DIA"
+            const items = servicios.filter((s) => {
+              if (!pasaFiltroPago(s)) return false;
+              const salida = normalizarFecha(s.salidaFecha);
+              if (!salida) return false;
+              
+              if (modoVista === 'semana') {
+                return salida === fechaStr;
+              } else {
+                const retorno = normalizarFecha(s.retornoFecha) || salida;
+                const dActual = aDate(fechaStr).getTime();
+                const dSalida = aDate(salida).getTime();
+                const dRetorno = aDate(retorno).getTime();
+                return dActual >= dSalida && dActual <= dRetorno;
+              }
+            });
 
-          return (
-            <div key={fechaStr} style={{ marginBottom: 22 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 13, color: '#999', fontWeight: 600 }}>{fechaStr}</span>
-                <button onClick={() => abrirModalEvento(fechaStr)}
-                  style={{ background: 'none', border: 'none', fontSize: 11, color: COLOR_EVENTO, fontWeight: 700, cursor: 'pointer' }}>
-                  + Agregar evento
-                </button>
-              </div>
+            const eventosDelDia = eventosPorDia[fechaStr] || [];
 
-              {eventosDelDia.length > 0 && (
-                <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {eventosDelDia.map((e) => (
-                    <div key={e.id} style={{ borderLeft: `3px solid ${COLOR_EVENTO}`, background: '#F6EEFA', borderRadius: 6, padding: '6px 10px' }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#1A1A1A' }}>{e.titulo}</div>
-                      {!!e.descripcion && <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>{e.descripcion}</div>}
-                    </div>
-                  ))}
+            return (
+              <div key={fechaStr} style={{ marginBottom: 22 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, color: '#999', fontWeight: 600 }}>{fechaStr}</span>
+                  <button onClick={() => abrirModalEvento(fechaStr)}
+                    style={{ background: 'none', border: 'none', fontSize: 11, color: COLOR_EVENTO, fontWeight: 700, cursor: 'pointer' }}>
+                    + Agregar evento
+                  </button>
                 </div>
-              )}
 
-              {items.length === 0 ? (
-                eventosDelDia.length === 0 && <span style={{ fontSize: 12, color: '#CCC' }}>Sin servicios</span>
-              ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <div style={{ borderRadius: 12, overflow: 'hidden', display: 'inline-block', minWidth: '100%' }}>
-                    <div style={{ display: 'flex', background: '#1A1A1A' }}>
-                      {COLUMNAS.map((c) => (
-                        <div key={c.key} style={{ width: c.width, padding: '10px', borderRight: '1px solid #333', flexShrink: 0 }}>
-                          <span style={{ color: '#F5C400', fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>{c.label}</span>
-                        </div>
-                      ))}
-                    </div>
-                    {items.map((s) => {
-                      const fila = filaDeServicio(s);
-                      return (
-                        <div key={s.id} style={{ display: 'flex', background: '#F4F4F4' }}>
-                          {COLUMNAS.map((c) => (
-                            <div key={c.key} style={{ width: c.width, padding: '10px', borderRight: '1px solid #F5C400', borderTop: '1px solid #E5E5E5', flexShrink: 0 }}>
-                              <span style={{ fontSize: 12, color: '#1A1A1A' }}>{fila[c.key]}</span>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })}
+                {eventosDelDia.length > 0 && (
+                  <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {eventosDelDia.map((e) => (
+                      <div key={e.id} style={{ borderLeft: `3px solid ${COLOR_EVENTO}`, background: '#F6EEFA', borderRadius: 6, padding: '6px 10px' }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#1A1A1A' }}>{e.titulo}</div>
+                        {!!e.descripcion && <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>{e.descripcion}</div>}
+                      </div>
+                    ))}
                   </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
+                )}
+
+                {items.length === 0 ? (
+                  eventosDelDia.length === 0 && <span style={{ fontSize: 12, color: '#CCC' }}>Sin servicios</span>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <div style={{ borderRadius: 12, overflow: 'hidden', display: 'inline-block', minWidth: '100%' }}>
+                      <div style={{ display: 'flex', background: '#1A1A1A' }}>
+                        {COLUMNAS.map((c) => (
+                          <div key={c.key} style={{ width: c.width, padding: '10px', borderRight: '1px solid #333', flexShrink: 0 }}>
+                            <span style={{ color: '#F5C400', fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>{c.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {items.map((s) => {
+                        const fila = filaDeServicio(s);
+                        return (
+                          <div key={s.id} style={{ display: 'flex', background: '#F4F4F4' }}>
+                            {COLUMNAS.map((c) => (
+                              <div key={c.key} style={{ width: c.width, padding: '10px', borderRight: '1px solid #F5C400', borderTop: '1px solid #E5E5E5', flexShrink: 0 }}>
+                                <span style={{ fontSize: 12, color: '#1A1A1A' }}>{fila[c.key]}</span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* ── MODAL: AGREGAR EVENTO ── */}
@@ -410,6 +570,51 @@ export default function Agenda() {
               <button onClick={guardarEvento} disabled={guardandoEvento}
                 style={{ padding: '9px 18px', background: '#F5C400', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, color: '#1A1A1A', cursor: 'pointer' }}>
                 {guardandoEvento ? 'Guardando...' : 'Guardar evento'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: DISPONIBILIDAD DE UNIDADES ── */}
+      {modalDisponibilidad && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+          onClick={() => setModalDisponibilidad(false)}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 520, maxHeight: '80vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#1A1A1A', marginBottom: 4 }}>
+              Unidades ocupadas
+            </div>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 18 }}>{semanaFecha}</div>
+
+            {Object.keys(unidadesOcupadas).length === 0 ? (
+              <div style={{ fontSize: 13, color: '#999', textAlign: 'center', padding: '20px 0' }}>
+                No hay unidades asignadas para este día.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {Object.entries(unidadesOcupadas).map(([catId, cat]) => (
+                  <div key={catId}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                      <IconoVehiculo tipo={catId} />
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#1A1A1A' }}>{cat.nombre}</span>
+                      <span style={{ fontSize: 11, color: '#999' }}>({cat.items.length})</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 40 }}>
+                      {cat.items.map((it, i) => (
+                        <div key={i} style={{ fontSize: 12, color: '#555' }}>
+                          N° {it.codigo} — <span style={{ color: '#1A1A1A' }}>{it.cliente}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+              <button onClick={() => setModalDisponibilidad(false)}
+                style={{ padding: '9px 18px', background: '#1A1A1A', color: '#F5C400', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                Cerrar
               </button>
             </div>
           </div>

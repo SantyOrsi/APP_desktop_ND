@@ -35,15 +35,15 @@ const OPCIONES_ESTADO = [
 const CICLO_FILTRO = [null, 'pendiente', 'enRuta', 'completo'];
 
 const FORM_VACIO = {
-  nropresupuesto: '', contacto: '', telefono: '', cuit: '', responsable: '',
+  nropresupuesto: '', contacto: '', telefono: '', cuit: '', responsable: '', telefonoResponsable: '',
   capacidad: '', estado: 'pendiente', domicilioOrigen: '', domicilioDestino: '',
   salidaFecha: '', salidaHora: '', retornoFecha: '', retornoHora: '',
-  movimientos: '', alojViaticos: '', dineroViaje: '', servicioABordo: 'No',
+  movimientos: 'NO', movimientosDetalle: '', alojViaticos: '', dineroViaje: '', servicioABordo: 'No',
   infoAdicional: '', observaciones: '',
 };
 
 const inp = (value, onChange, placeholder = '', type = 'text', readOnly = false) => (
-  <input type={type} value={value || ''} onChange={onChange} placeholder={placeholder} readOnly={readOnly}
+  <input type={type} value={value || ''} onChange={onChange} placeholder={placeholder} readOnly={readOnly} onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
     className={readOnly ? '' : 'nd-input'}
     style={{ padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: readOnly ? '#F0F0F0' : '#F8F8F8', outline: 'none', width: '100%', color: readOnly ? '#888' : '#1A1A1A', transition: 'background 0.15s' }} />
 );
@@ -121,8 +121,12 @@ export default function Servicios() {
   const [resultadosNro, setResultadosNro] = useState([]);
   const [resultadosFecha, setResultadosFecha] = useState([]);
 
-  // No se puede escribir ni guardar hasta encontrar un servicio o presupuesto
-  const bloqueado = !form.nropresupuesto;
+  // No se puede escribir ni guardar hasta encontrar un servicio o presupuesto.
+  // OJO: esto es un estado propio, no depende de que "nropresupuesto" tenga
+  // contenido — si dependiera del campo, un servicio encontrado con ese dato
+  // vacío dejaba todo bloqueado sin avisar.
+  const [desbloqueado, setDesbloqueado] = useState(false);
+  const bloqueado = !desbloqueado;
 
   const CAMPOS_FECHA = ['salidaFecha', 'retornoFecha'];
   const CAMPOS_HORA = ['salidaHora', 'retornoHora'];
@@ -145,7 +149,7 @@ export default function Servicios() {
 
   // Busca primero en 'servicios' (ya cargado) y si no hay, arma uno nuevo
   // a partir del 'presupuesto' + 'contrato' vinculados (mismo criterio que el celu).
-  const buscarUnificado = async (campoServicio, campoPresupuesto, valor, setResultados) => {
+  const buscarUnificado = (campoServicio, campoPresupuesto, valor, setResultados) => {
     if (!valor.trim()) return;
     const enServicios = servicios.filter((s) => (s[campoServicio] || '').toString().trim() === valor.trim());
     if (enServicios.length > 0) {
@@ -163,6 +167,19 @@ export default function Servicios() {
     if (enPresupuestos.length === 1) seleccionar({ ...enPresupuestos[0], _tipo: 'presupuesto' });
   };
 
+  // Sugerencias en vivo mientras se escribe (match parcial, no dispara selección sola)
+  const sugerirUnificado = (campoServicio, campoPresupuesto, valor, setResultados) => {
+    const filtro = valor.trim().toLowerCase();
+    if (!filtro) { setResultados([]); return; }
+    const deServicios = servicios
+      .filter((s) => (s[campoServicio] || '').toString().toLowerCase().includes(filtro))
+      .map((s) => ({ ...s, _tipo: 'servicio' }));
+    const dePresupuestos = presupuestosTodos
+      .filter((p) => (p[campoPresupuesto] || '').toString().toLowerCase().includes(filtro))
+      .map((p) => ({ ...p, _tipo: 'presupuesto' }));
+    setResultados([...deServicios, ...dePresupuestos].slice(0, 6));
+  };
+
   const buscarCliente = () => buscarUnificado('contacto', 'cliente', busquedaCliente, setResultadosCliente);
   const buscarDestino = () => buscarUnificado('domicilioDestino', 'destino', busquedaDestino, setResultadosDestino);
   const buscarNro = () => buscarUnificado('nropresupuesto', 'nroPresupuesto', busquedaNro, setResultadosNro);
@@ -176,6 +193,7 @@ export default function Servicios() {
       setBusquedaNro(it.nropresupuesto || '');
       setBusquedaDestino(it.domicilioDestino || '');
       setBusquedaFecha(it.salidaFecha || '');
+      setDesbloqueado(true);
       limpiarResultados();
       return;
     }
@@ -203,12 +221,15 @@ export default function Servicios() {
       cuit: contrato?.cuitDni || '',
       domicilioOrigen: contrato?.domicilioOrigen || '',
       domicilioDestino: contrato?.domicilioDestino || '',
+      movimientos: it.movimiento || 'NO',
+      movimientosDetalle: it.movimientoDetalle || '',
     }));
     setDocId(null);
     setBusquedaCliente(it.cliente || '');
     setBusquedaNro(it.nroPresupuesto || '');
     setBusquedaDestino(it.destino || '');
     setBusquedaFecha(it.salidaFecha || '');
+    setDesbloqueado(true);
     limpiarResultados();
   };
 
@@ -228,6 +249,7 @@ export default function Servicios() {
     setBusquedaDestino('');
     setBusquedaNro('');
     setBusquedaFecha('');
+    setDesbloqueado(false);
     limpiarResultados();
     setVista('form');
   };
@@ -376,23 +398,19 @@ export default function Servicios() {
         <Seccion titulo="Búsqueda">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', columnGap: 40, rowGap: 22 }}>
             <div>
-              {campo('Cliente', inp(busquedaCliente, (e) => setBusquedaCliente(e.target.value), 'Buscar...'))}
-              <div style={{ marginTop: 8 }}>{btnBuscar(buscarCliente)}</div>
+              {campo('Cliente', inp(busquedaCliente, (e) => { setBusquedaCliente(e.target.value); sugerirUnificado('contacto', 'cliente', e.target.value, setResultadosCliente); }, 'Buscar...'))}
               {resultadosCliente.map((r, i) => resultadoItem(`${r.contacto || r.cliente} — N° ${r.nropresupuesto || r.nroPresupuesto}`, () => seleccionar(r)))}
             </div>
             <div>
-              {campo('Destino', inp(busquedaDestino, (e) => setBusquedaDestino(e.target.value), 'Buscar...'))}
-              <div style={{ marginTop: 8 }}>{btnBuscar(buscarDestino)}</div>
+              {campo('Destino', inp(busquedaDestino, (e) => { setBusquedaDestino(e.target.value); sugerirUnificado('domicilioDestino', 'destino', e.target.value, setResultadosDestino); }, 'Buscar...'))}
               {resultadosDestino.map((r, i) => resultadoItem(`${r.contacto || r.cliente} — N° ${r.nropresupuesto || r.nroPresupuesto}`, () => seleccionar(r)))}
             </div>
             <div>
-              {campo('Nro. Presupuesto', inp(busquedaNro, (e) => setBusquedaNro(e.target.value), 'Buscar...'))}
-              <div style={{ marginTop: 8 }}>{btnBuscar(buscarNro)}</div>
+              {campo('Nro. Presupuesto', inp(busquedaNro, (e) => { setBusquedaNro(e.target.value); sugerirUnificado('nropresupuesto', 'nroPresupuesto', e.target.value, setResultadosNro); }, 'Buscar...'))}
               {resultadosNro.map((r, i) => resultadoItem(`${r.contacto || r.cliente} — N° ${r.nropresupuesto || r.nroPresupuesto}`, () => seleccionar(r)))}
             </div>
             <div>
-              {campo('Fecha', inp(busquedaFecha, (e) => setBusquedaFecha(formatearFecha(e.target.value)), 'DD/MM/AAAA'))}
-              <div style={{ marginTop: 8 }}>{btnBuscar(buscarFecha)}</div>
+              {campo('Fecha', inp(busquedaFecha, (e) => { const v = formatearFecha(e.target.value); setBusquedaFecha(v); sugerirUnificado('salidaFecha', 'salidaFecha', v, setResultadosFecha); }, 'DD/MM/AAAA'))}
               {resultadosFecha.map((r, i) => resultadoItem(`${r.contacto || r.cliente} — N° ${r.nropresupuesto || r.nroPresupuesto}`, () => seleccionar(r)))}
             </div>
           </div>
@@ -408,15 +426,22 @@ export default function Servicios() {
           </div>
         </Seccion>
 
-        {/* CONTACTO / VIAJE */}
-        <Seccion titulo="Contacto / Viaje">
+        {/* CONTACTO */}
+        <Seccion titulo="Contacto">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 22 }}>
             {campo('Contacto', inp(form.contacto, set('contacto'), '', 'text', bloqueado))}
-            {campo('Capacidad', inp(form.capacidad, set('capacidad'), '', 'text', bloqueado))}
-            {campo('Telefono', inp(form.telefono, set('telefono'), '', 'text', bloqueado))}
-            {campo('Estado', sel(form.estado, set('estado'), bloqueado, OPCIONES_ESTADO))}
+            {campo('Telf. Contacto', inp(form.telefono, set('telefono'), '', 'text', bloqueado))}
             {campo('Cuit', inp(form.cuit, set('cuit'), '', 'text', bloqueado))}
             {campo('Responsable', inp(form.responsable, set('responsable'), '', 'text', bloqueado))}
+            {campo('Telf. Responsable', inp(form.telefonoResponsable, set('telefonoResponsable'), '', 'text', bloqueado))}
+          </div>
+        </Seccion>
+
+        {/* VIAJE */}
+        <Seccion titulo="Viaje">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 22 }}>
+            {campo('Cap. Transporte', inp(form.capacidad, set('capacidad'), '', 'text', bloqueado))}
+            {campo('Estado', inp(ESTADO_LABEL[form.estado] || form.estado, () => {}, '', true))}
           </div>
         </Seccion>
 
@@ -441,9 +466,9 @@ export default function Servicios() {
         {/* ADICIONALES */}
         <Seccion titulo="Adicionales">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 22 }}>
-            {campo('Movimientos', inp(form.movimientos, set('movimientos'), '', 'text', bloqueado))}
+            {campo('Movimientos', sel(form.movimientos, set('movimientos'), bloqueado, [{ key: 'NO', label: 'NO' }, { key: 'SI', label: 'SI' }]))}
+            {form.movimientos === 'SI' && campo('Detalle Movimientos', inp(form.movimientosDetalle, set('movimientosDetalle'), 'Detallar movimientos...', 'text', bloqueado))}
             {campo('Aloj y Viat a cargo de', inp(form.alojViaticos, set('alojViaticos'), '', 'text', bloqueado))}
-            {campo('Dinero para viaje', inp(form.dineroViaje, set('dineroViaje'), '', 'text', bloqueado))}
             {campo('Servicio a bordo', sel(form.servicioABordo, set('servicioABordo'), bloqueado, [{ key: 'Si', label: 'Si' }, { key: 'No', label: 'No' }]))}
             {campo('Info Adicional', inp(form.infoAdicional, set('infoAdicional'), '', 'text', bloqueado))}
             {campo('Observaciones', inp(form.observaciones, set('observaciones'), '', 'text', bloqueado))}

@@ -8,15 +8,22 @@ function createWindow() {
     height: 800,
     minWidth: 1024,
     minHeight: 600,
+    icon: path.join(__dirname, 'build/icon.png'),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
     },
     title: 'Nuevo Destino',
     autoHideMenuBar: true,
+    show: false,
   });
 
   win.loadFile('dist/index.html');
+
+  win.once('ready-to-show', () => {
+    win.maximize();
+    win.show();
+  });
 }
 
 app.whenReady().then(createWindow);

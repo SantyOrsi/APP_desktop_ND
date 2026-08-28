@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { auth, db } from './constants/firebase';
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
+import { LOGO_ND } from './constants/logo';
 
 export default function Login({ onLogin }) {
   const [email, setEmail] = useState('');
@@ -37,7 +38,9 @@ export default function Login({ onLogin }) {
     <div style={{ display: 'flex', height: '100vh', fontFamily: 'sans-serif' }}>
       <div style={{ width: 420, background: '#1A1A1A', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: 40, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#F5C400', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#1A1A1A' }}>ND</div>
+          <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#F5C400', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            <img src={LOGO_ND} alt="ND" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
           <div style={{ fontSize: 15, fontWeight: 700 }}>
             <span style={{ color: '#fff' }}>NUEVO </span>
             <span style={{ color: '#F5C400' }}>DESTINO</span>

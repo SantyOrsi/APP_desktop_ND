@@ -15,6 +15,7 @@ import Agenda from './Agenda';
 import Usuarios from './Usuarios';
 import ChatGeneral from './ChatGeneral';
 import Logistica from './Logistica';
+import { LOGO_ND } from './constants/logo';
 
 import {
   Chart as ChartJS,
@@ -70,7 +71,7 @@ const NAV = [
 
   {
     id: 'logistica',
-    label: 'Logistica',
+    label: 'Trafico',
     icon: 'ti-truck'
   },
 
@@ -283,6 +284,9 @@ export default function Dashboard({
 
   const [seccion, setSeccion] =
     useState('dashboard');
+
+  const [sidebarVisible, setSidebarVisible] =
+    useState(true);
 
   const [tab, setTab] =
     useState('servicios');
@@ -1860,19 +1864,24 @@ export default function Dashboard({
     >
 
 
+
       {/* ======================================
           SIDEBAR
       ====================================== */}
 
       <div
         style={{
-          width: 220,
+          width: sidebarVisible ? 220 : 0,
           background: '#1A1A1A',
           display: 'flex',
           flexDirection: 'column',
-          flexShrink: 0
+          flexShrink: 0,
+          overflow: 'hidden',
+          transition: 'width 0.18s ease',
         }}
       >
+
+        <div style={{ width: 220 }}>
 
         <div
           style={{
@@ -1899,13 +1908,11 @@ export default function Dashboard({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: 11,
-                fontWeight: 700,
-                color: '#1A1A1A',
+                overflow: 'hidden',
                 flexShrink: 0
               }}
             >
-              ND
+              <img src={LOGO_ND} alt="ND" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </div>
 
 
@@ -2125,6 +2132,34 @@ export default function Dashboard({
 
         </div>
 
+        </div>
+
+      </div>
+
+      {/* Flechita para esconder/mostrar la sidebar */}
+      <div
+        onClick={() => setSidebarVisible((v) => !v)}
+        title={sidebarVisible ? 'Ocultar menú' : 'Mostrar menú'}
+        style={{
+          position: 'fixed',
+          top: '50%',
+          left: sidebarVisible ? 220 : 0,
+          transform: 'translate(-50%, -50%)',
+          width: 22,
+          height: 40,
+          background: '#1A1A1A',
+          borderRadius: '0 6px 6px 0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          zIndex: 50,
+          transition: 'left 0.18s ease',
+        }}
+      >
+        <span style={{ color: '#F5C400', fontSize: 12 }}>
+          {sidebarVisible ? '‹' : '›'}
+        </span>
       </div>
 
 

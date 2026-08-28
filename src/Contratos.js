@@ -21,7 +21,7 @@ const formatearFecha = (texto) => {
 
 const fechaCompleta = (texto) => /^\d{2}\/\d{2}\/\d{4}$/.test(texto || '');
 
-const OPCIONES_ESTADO = ['Reservado', 'Señado', 'Suspendido', 'Abonado'];
+const OPCIONES_ESTADO = ['Señado', 'Pago total', 'Suspendido', 'Cuenta corriente'];
 const CICLO_FILTRO = [null, ...OPCIONES_ESTADO];
 
 const FORM_VACIO = {
@@ -31,7 +31,7 @@ const FORM_VACIO = {
 };
 
 const inp = (value, onChange, placeholder = '', type = 'text', readOnly = false) => (
-  <input type={type} value={value || ''} onChange={onChange} placeholder={placeholder} readOnly={readOnly}
+  <input type={type} value={value || ''} onChange={onChange} placeholder={placeholder} readOnly={readOnly} onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
     className={readOnly ? '' : 'nd-input'}
     style={{ padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: readOnly ? '#F0F0F0' : '#F8F8F8', outline: 'none', width: '100%', color: readOnly ? '#888' : '#1A1A1A', transition: 'background 0.15s' }} />
 );
@@ -110,7 +110,11 @@ export default function Contratos() {
 
   // No se puede escribir en los datos del contrato ni guardar/PDF hasta
   // presionar ALTA CONTRATO (lo que requiere haber encontrado un presupuesto)
-  const bloqueado = !form.fechaContrato;
+  const [desbloqueado, setDesbloqueado] = useState(false);
+  const bloqueado = !desbloqueado;
+
+  // ── Sugerencias de Cliente (de otros contratos, sin base de clientes aparte) ──
+  const [sugerenciasClienteDatos, setSugerenciasClienteDatos] = useState([]);
 
   const CAMPOS_FECHA = ['fechaContrato', 'fechaCancelacion'];
   const CAMPOS_NUMERICOS = ['cuitDni', 'telefono', 'senia', 'saldo'];
@@ -128,6 +132,36 @@ export default function Contratos() {
       }
       return updated;
     });
+
+    if (key === 'clienteNombre') {
+      const filtro = val.trim().toLowerCase();
+      if (!filtro) { setSugerenciasClienteDatos([]); return; }
+      const vistos = new Set();
+      const encontrados = [];
+      for (const c of contratos) {
+        const nombre = (c.clienteNombre || '').trim();
+        if (!nombre || !nombre.toLowerCase().includes(filtro)) continue;
+        const clave = nombre.toLowerCase();
+        if (vistos.has(clave)) continue;
+        vistos.add(clave);
+        encontrados.push(c);
+        if (encontrados.length >= 6) break; // límite de 6 sugerencias
+      }
+      setSugerenciasClienteDatos(encontrados);
+    }
+  };
+
+  // Al elegir una sugerencia: autocompleta Cuit-Dni, Teléfono y Domicilio
+  // con los de ese contrato anterior del mismo cliente.
+  const elegirSugerenciaCliente = (c) => {
+    setForm((prev) => ({
+      ...prev,
+      clienteNombre: c.clienteNombre || '',
+      cuitDni: c.cuitDni || prev.cuitDni,
+      telefono: c.telefono || prev.telefono,
+      domicilioCliente: c.domicilioCliente || prev.domicilioCliente,
+    }));
+    setSugerenciasClienteDatos([]);
   };
 
   const limpiarResultados = () => {
@@ -158,9 +192,11 @@ export default function Contratos() {
         setDocId(snap.docs[0].id);
         const existente = snap.docs[0].data();
         setForm({ ...FORM_VACIO, ...existente });
+        setDesbloqueado(true);
       } else {
         setDocId(null);
         setForm(FORM_VACIO);
+        setDesbloqueado(false); // recién se desbloquea al presionar ALTA CONTRATO
       }
     } catch (error) {
       alert('Error al buscar contrato: ' + error.message);
@@ -184,7 +220,24 @@ export default function Contratos() {
     );
   };
 
-  const buscarCliente = async () => {
+  const sugerirNro = (texto) => {
+    setBusquedaNro(texto);
+    const filtro = texto.trim();
+    setResultadosNro(
+      filtro ? presupuestosTodos.filter((p) => String(p.nroPresupuesto || '').includes(filtro)).slice(0, 6) : []
+    );
+  };
+
+  const sugerirFecha = (texto) => {
+    const val = formatearFecha(texto);
+    setFecha(val);
+    const filtro = val.trim();
+    setResultadosFecha(
+      filtro ? presupuestosTodos.filter((p) => (p.fecha || '').includes(filtro)).slice(0, 6) : []
+    );
+  };
+
+  const buscarCliente = () => {
     if (!busquedaCliente.trim()) return;
     const filtro = busquedaCliente.trim().toLowerCase();
     const datos = presupuestosTodos.filter((p) => (p.cliente || '').toLowerCase().includes(filtro));
@@ -193,27 +246,23 @@ export default function Contratos() {
     else if (datos.length === 1) seleccionarPresupuesto(datos[0]);
   };
 
-  const buscarNro = async () => {
+  const buscarNro = () => {
     if (!busquedaNro.trim()) return;
-    const q = query(collection(db, 'presupuestos'), where('nroPresupuesto', '==', busquedaNro.trim()));
-    const snap = await getDocs(q);
-    const datos = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const datos = presupuestosTodos.filter((p) => String(p.nroPresupuesto || '') === busquedaNro.trim());
     setResultadosNro(datos);
     if (datos.length === 0) alert('No se encontró ningún presupuesto con ese número');
     else if (datos.length === 1) seleccionarPresupuesto(datos[0]);
   };
 
-  const buscarFecha = async () => {
+  const buscarFecha = () => {
     if (!fecha.trim()) return;
-    const q = query(collection(db, 'presupuestos'), where('fecha', '==', fecha.trim()));
-    const snap = await getDocs(q);
-    const datos = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const datos = presupuestosTodos.filter((p) => (p.fecha || '') === fecha.trim());
     setResultadosFecha(datos);
     if (datos.length === 0) alert('No se encontraron presupuestos con esa fecha');
     else if (datos.length === 1) seleccionarPresupuesto(datos[0]);
   };
 
-  const buscarDestino = async () => {
+  const buscarDestino = () => {
     if (!destino.trim()) return;
     const filtro = destino.trim().toLowerCase();
     const datos = presupuestosTodos.filter((p) => (p.destino || '').toLowerCase().includes(filtro));
@@ -233,6 +282,7 @@ export default function Contratos() {
       clienteNombre: clienteEncontrado,
       ciudad: presupuestoVinculado?.origen || prev.ciudad,
     }));
+    setDesbloqueado(true);
   };
 
   // ── Navegar contratos ya guardados (independiente de la búsqueda de arriba) ──
@@ -250,6 +300,7 @@ export default function Contratos() {
     setBusquedaNro(item.nroPresupuesto || '');
     setPresupuestoVinculado(null);
     setForm({ ...FORM_VACIO, ...item });
+    setDesbloqueado(true);
     limpiarResultados();
   };
 
@@ -269,6 +320,7 @@ export default function Contratos() {
     setBusquedaNro('');
     setCostoTotal('0');
     setPresupuestoVinculado(null);
+    setDesbloqueado(false);
     limpiarResultados();
     setVista('form');
   };
@@ -420,22 +472,18 @@ export default function Contratos() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', columnGap: 40, rowGap: 22, marginBottom: 20 }}>
             <div>
               {campo('Cliente', inp(busquedaCliente, (e) => sugerirCliente(e.target.value), 'Buscar por nombre...'))}
-              <div style={{ marginTop: 8 }}>{btnBuscar(buscarCliente)}</div>
               {resultadosCliente.map((r) => resultadoItem(`${r.cliente} — N° ${r.nroPresupuesto}`, () => seleccionarPresupuesto(r)))}
             </div>
             <div>
-              {campo('Nro. Presupuesto', inp(busquedaNro, (e) => setBusquedaNro(e.target.value), 'Buscar por id...'))}
-              <div style={{ marginTop: 8 }}>{btnBuscar(buscarNro)}</div>
+              {campo('Nro. Presupuesto', inp(busquedaNro, (e) => sugerirNro(e.target.value), 'Buscar por id...'))}
               {resultadosNro.map((r) => resultadoItem(`${r.cliente} — N° ${r.nroPresupuesto}`, () => seleccionarPresupuesto(r)))}
             </div>
             <div>
-              {campo('Fecha', inp(fecha, (e) => setFecha(formatearFecha(e.target.value)), 'DD/MM/AAAA'))}
-              <div style={{ marginTop: 8 }}>{btnBuscar(buscarFecha)}</div>
+              {campo('Fecha', inp(fecha, (e) => sugerirFecha(e.target.value), 'DD/MM/AAAA'))}
               {resultadosFecha.map((r) => resultadoItem(`${r.cliente} — N° ${r.nroPresupuesto}`, () => seleccionarPresupuesto(r)))}
             </div>
             <div>
               {campo('Destino', inp(destino, (e) => sugerirDestino(e.target.value), 'Buscar por destino...'))}
-              <div style={{ marginTop: 8 }}>{btnBuscar(buscarDestino)}</div>
               {resultadosDestino.map((r) => resultadoItem(`${r.cliente} — N° ${r.nroPresupuesto}`, () => seleccionarPresupuesto(r)))}
             </div>
           </div>
@@ -467,7 +515,16 @@ export default function Contratos() {
         {/* DATOS CLIENTE */}
         <Seccion titulo="Datos Cliente">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 22 }}>
-            {campo('Cliente', inp(form.clienteNombre, set('clienteNombre'), '', 'text', bloqueado))}
+            <div>
+              {campo('Cliente', inp(form.clienteNombre, set('clienteNombre'), '', 'text', bloqueado))}
+              {!bloqueado && sugerenciasClienteDatos.length > 0 && (
+                <div style={{ marginTop: 4 }}>
+                  {sugerenciasClienteDatos.map((c) =>
+                    resultadoItem(c.clienteNombre, () => elegirSugerenciaCliente(c))
+                  )}
+                </div>
+              )}
+            </div>
             {campo('Cuit-Dni', inp(form.cuitDni, set('cuitDni'), '', 'text', bloqueado))}
             {campo('Telefono', inp(form.telefono, set('telefono'), '', 'text', bloqueado))}
             {campo('Domicilio', inp(form.domicilioCliente, set('domicilioCliente'), '', 'text', bloqueado))}

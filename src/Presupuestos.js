@@ -9,6 +9,12 @@ const hoy = () => {
   return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
 };
 
+const hoyMasDias = (dias) => {
+  const d = new Date();
+  d.setDate(d.getDate() + dias);
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+};
+
 // Solo dígitos
 const soloNumeros = (texto) => (texto || '').replace(/[^0-9]/g, '');
 
@@ -29,15 +35,15 @@ const formatearHora = (texto) => {
 };
 
 const FORM_VACIO = {
-  nroPresupuesto: '', cliente: '', fecha: hoy(), vigencia: hoy(),
+  nroPresupuesto: '', cliente: '', fecha: hoy(), vigencia: hoyMasDias(30),
   origen: '', destino: '', kmRecorrer: '', salidaFecha: hoy(), salidaHora: '',
   retornoFecha: '', retornoHora: '', movimiento: 'NO', movimientoDetalle: '',
-  adicionales: 'NO', adicionalesDetalle: '', alojViaticosCargo: '',
+  adicionales: 'NO', adicionalesDetalle: '', infoAdicional: 'NO', infoAdicionalDetalle: '', alojViaticosCargo: '',
   importAlojViaticos: '', capacidad: '', tipoTransporte: '', costoTotal: '', costoIva: '', estado: 'pendiente',
 };
 
 const inp = (value, onChange, placeholder = '', type = 'text', readOnly = false) => (
-  <input type={type} value={value || ''} onChange={onChange} placeholder={placeholder} readOnly={readOnly}
+  <input type={type} value={value || ''} onChange={onChange} placeholder={placeholder} readOnly={readOnly} onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
     className={readOnly ? '' : 'nd-input'}
     style={{ padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: readOnly ? '#F0F0F0' : '#F8F8F8', outline: 'none', width: '100%', color: readOnly ? '#888' : '#1A1A1A', transition: 'background 0.15s' }} />
 );
@@ -117,11 +123,11 @@ export default function Presupuestos() {
 
   // ── Navegación Primero/Anterior/Siguiente/Ultimo ──
   const listaOrdenada = [...presupuestos].sort((a, b) => Number(a.nroPresupuesto) - Number(b.nroPresupuesto));
-  const indiceActual = listaOrdenada.findIndex((p) => p.id === docId);
+  const [indiceNav, setIndiceNav] = useState(-1);
 
   const CAMPOS_FECHA = ['fecha', 'vigencia', 'salidaFecha', 'retornoFecha'];
   const CAMPOS_HORA = ['salidaHora', 'retornoHora'];
-  const CAMPOS_NUMERICOS = ['nroPresupuesto', 'kmRecorrer'];
+  const CAMPOS_NUMERICOS = ['nroPresupuesto', 'kmRecorrer', 'capacidad', 'importAlojViaticos', 'costoTotal'];
 
   // Función para obtener el próximo número de presupuesto (autoincremental arrancando en 1)
   const obtenerProximoNro = () => {
@@ -158,9 +164,10 @@ export default function Presupuestos() {
     });
   };
 
-  const seleccionar = (item) => {
+  const seleccionar = (item, idx = null) => {
     setForm(item);
     setDocId(item.id);
+    setIndiceNav(idx !== null ? idx : listaOrdenada.findIndex((p) => p.id === item.id));
     setResultadosCliente([]);
     setResultadosNro([]);
   };
@@ -169,6 +176,7 @@ export default function Presupuestos() {
     const proximoNro = obtenerProximoNro();
     setForm({ ...FORM_VACIO, nroPresupuesto: proximoNro });
     setDocId(null);
+    setIndiceNav(listaOrdenada.length); // posición virtual, después del último real
     setVista('form');
   };
 
@@ -191,18 +199,19 @@ export default function Presupuestos() {
     }
   };
 
-  const irPrimero = () => listaOrdenada.length && seleccionar(listaOrdenada[0]);
-  const irUltimo = () => listaOrdenada.length && seleccionar(listaOrdenada[listaOrdenada.length - 1]);
-  const irAnterior = () => indiceActual > 0 && seleccionar(listaOrdenada[indiceActual - 1]);
+  const irPrimero = () => listaOrdenada.length && seleccionar(listaOrdenada[0], 0);
+  const irUltimo = () => listaOrdenada.length && seleccionar(listaOrdenada[listaOrdenada.length - 1], listaOrdenada.length - 1);
+  const irAnterior = () => indiceNav > 0 && seleccionar(listaOrdenada[indiceNav - 1], indiceNav - 1);
   const irSiguiente = () => {
     if (listaOrdenada.length === 0) return;
-    if (indiceActual >= 0 && indiceActual < listaOrdenada.length - 1) {
-      seleccionar(listaOrdenada[indiceActual + 1]);
+    if (indiceNav >= 0 && indiceNav < listaOrdenada.length - 1) {
+      seleccionar(listaOrdenada[indiceNav + 1], indiceNav + 1);
       return;
     }
     const proximoNro = obtenerProximoNro();
     setForm({ ...FORM_VACIO, nroPresupuesto: proximoNro });
     setDocId(null);
+    setIndiceNav(listaOrdenada.length); // posición virtual, para poder volver con ANTERIOR
   };
 
   const { ipcRenderer } = window.require ? window.require('electron') : {};
@@ -285,20 +294,14 @@ export default function Presupuestos() {
     await generarPDF();
   };
 
-  const buscarPorNro = async () => {
+  const buscarPorNro = () => {
     if (!busqueda.trim()) return;
-    try {
-      const q = query(collection(db, 'presupuestos'), where('nroPresupuesto', '==', busqueda.trim()));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const item = { id: snap.docs[0].id, ...snap.docs[0].data() };
-        seleccionar(item);
-        setVista('form');
-      } else {
-        alert('No se encontró ningún presupuesto con ese número');
-      }
-    } catch (error) {
-      alert('Error: ' + error.message);
+    const item = presupuestos.find((p) => String(p.nroPresupuesto || '') === busqueda.trim());
+    if (item) {
+      seleccionar(item);
+      setVista('form');
+    } else {
+      alert('No se encontró ningún presupuesto con ese número');
     }
   };
 
@@ -329,7 +332,9 @@ export default function Presupuestos() {
   const filtrados = presupuestos
     .filter(p =>
       (p.cliente || '').toLowerCase().includes(busqueda.toLowerCase()) ||
-      (p.nroPresupuesto || '').toString().includes(busqueda)
+      (p.nroPresupuesto || '').toString().includes(busqueda) ||
+      (p.fecha || '').includes(busqueda) ||
+      (p.salidaFecha || '').includes(busqueda)
     )
     .sort((a, b) => {
       if (!orden.campo) return 0;
@@ -383,13 +388,22 @@ export default function Presupuestos() {
         <Seccion titulo="Búsqueda">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', columnGap: 40, rowGap: 22 }}>
             <div>
-              {campo('Cliente', inp(busquedaCliente, (e) => setBusquedaCliente(e.target.value), 'Buscar por nombre...'))}
-              <div style={{ marginTop: 8 }}>{btnBuscar(buscarCliente)}</div>
+              {campo('Cliente', inp(busquedaCliente, (e) => {
+                const v = e.target.value;
+                setBusquedaCliente(v);
+                const filtro = v.trim().toLowerCase();
+                setResultadosCliente(filtro ? presupuestos.filter(p => (p.cliente || '').toLowerCase().includes(filtro)).slice(0, 6) : []);
+              }, 'Buscar por nombre...'))}
               {resultadosCliente.map((r) => resultadoItem(`${r.cliente} — N° ${r.nroPresupuesto}`, () => seleccionar(r)))}
             </div>
             <div>
-              {campo('Nro. Presupuesto', inp(busquedaNro, (e) => setBusquedaNro(e.target.value), 'Buscar por id...'))}
-              <div style={{ marginTop: 8 }}>{btnBuscar(buscarNro)}</div>
+              {campo('Nro. Presupuesto', inp(busquedaNro, (e) => {
+                const v = e.target.value;
+                setBusquedaNro(v);
+                const filtro = v.trim();
+                setResultadosNro(filtro ? presupuestos.filter(p => String(p.nroPresupuesto || '').includes(filtro)).slice(0, 6) : []);
+              }, 'Buscar por id...'))}
+              {resultadosNro.map((r) => resultadoItem(`${r.cliente} — N° ${r.nroPresupuesto}`, () => seleccionar(r)))}
             </div>
           </div>
         </Seccion>
@@ -398,7 +412,7 @@ export default function Presupuestos() {
         <Seccion titulo="Navegar Presupuestos">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', columnGap: 28, rowGap: 12 }}>
             {btnChico('PRIMERO', irPrimero, listaOrdenada.length === 0)}
-            {btnChico('ANTERIOR', irAnterior, indiceActual <= 0)}
+            {btnChico('ANTERIOR', irAnterior, indiceNav <= 0)}
             {btnChico('SIGUIENTE', irSiguiente, listaOrdenada.length === 0)}
             {btnChico('ULTIMO', irUltimo, listaOrdenada.length === 0)}
           </div>
@@ -448,6 +462,15 @@ export default function Presupuestos() {
               )}
             </div>
 
+            <div>
+              {campo('Info Adicional', sel(form.infoAdicional, set('infoAdicional'), opcionesSiNo))}
+              {form.infoAdicional === 'SI' && (
+                <div style={{ marginTop: 8 }}>
+                  {txtArea(form.infoAdicionalDetalle, set('infoAdicionalDetalle'), 'Detallar información adicional...', 5)}
+                </div>
+              )}
+            </div>
+
             {campo('Aloj. y Viát. a cargo de', inp(form.alojViaticosCargo, set('alojViaticosCargo')))}
             {campo('Importe Aloj. y Viát.', inp(form.importAlojViaticos, set('importAlojViaticos')))}
             {campo('Cap. Transporte', inp(form.capacidad, set('capacidad')))}
@@ -479,7 +502,7 @@ export default function Presupuestos() {
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <input placeholder="Buscar por cliente o número..." value={busqueda} onChange={e => setBusqueda(e.target.value)}
+        <input placeholder="Buscar por cliente, número o fecha (DD/MM/AAAA)..." value={busqueda} onChange={e => setBusqueda(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && buscarPorNro()}
           style={{ flex: 1, padding: '10px 14px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: '#fff', outline: 'none' }} />
         <button onClick={buscarPorNro}

@@ -11,11 +11,11 @@ export const FLOTA = [
   },
   {
     id: 'mini15', nombre: 'Minibús 15 pax', capacidad: 15, capacidadTexto: '15 pasajeros',
-    // No hay unidades de 15 pax en el parque móvil, queda sin sub-lista.
+    subUnidades: ['26'],
   },
   {
     id: 'mini17', nombre: 'Minibús 17 pax', capacidad: 17, capacidadTexto: '17 pasajeros',
-    subUnidades: ['26'],
+    
   },
   {
     id: 'mini19', nombre: 'Minibús 19 pax', capacidad: 19, capacidadTexto: '19 pasajeros',

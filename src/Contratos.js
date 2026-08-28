@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useColeccion } from './hooks/useFirestore';
 import { db } from './constants/firebase';
-import { collection, addDoc, updateDoc, doc, Timestamp, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import { generarContratoPDF } from './helpers/generarContratoPDF';
 const { ipcRenderer } = window.require('electron');
 
@@ -27,7 +27,7 @@ const CICLO_FILTRO = [null, ...OPCIONES_ESTADO];
 const FORM_VACIO = {
   fechaContrato: '', clienteNombre: '', cuitDni: '', telefono: '',
   domicilioCliente: '', ciudad: '', domicilioOrigen: '', domicilioDestino: '',
-  senia: '', saldo: '', estado: '', metodoPago: '', fechaCancelacion: '',
+  senia: '', saldo: '', estado: '', estadoPrevio: '', metodoPago: '', fechaCancelacion: '',
 };
 
 const inp = (value, onChange, placeholder = '', type = 'text', readOnly = false) => (
@@ -64,13 +64,6 @@ const Seccion = ({ titulo, children }) => (
   </div>
 );
 
-const btnBuscar = (onClick) => (
-  <button onClick={onClick}
-    style={{ padding: '9px 0', background: '#F5C400', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 700, color: '#1A1A1A', cursor: 'pointer', width: '100%' }}>
-    BUSCAR
-  </button>
-);
-
 const btnChico = (texto, onClick, disabled) => (
   <button onClick={onClick} disabled={disabled}
     style={{ padding: '9px 0', background: '#fff', border: '1px solid #1A1A1A', borderRadius: 8, fontSize: 11, fontWeight: 700, color: disabled ? '#CCC' : '#1A1A1A', cursor: disabled ? 'default' : 'pointer', width: '100%', opacity: disabled ? 0.5 : 1 }}>
@@ -90,11 +83,15 @@ export default function Contratos() {
   const { datos: presupuestosTodos } = useColeccion('presupuestos');
   const [busquedaTabla, setBusquedaTabla] = useState('');
   const [vista, setVista] = useState('tabla');
+  const [verPapelera, setVerPapelera] = useState(false);
   const [form, setForm] = useState(FORM_VACIO);
   const [docId, setDocId] = useState(null);
   const [guardando, setGuardando] = useState(false);
 
-  // ── Datos del presupuesto vinculado (se llenan al buscar) ──
+  // ── Selección múltiple para eliminar ──
+  const [seleccionados, setSeleccionados] = useState([]);
+
+  // ── Datos del presupuesto vinculado ──
   const [busquedaCliente, setBusquedaCliente] = useState('');
   const [busquedaNro, setBusquedaNro] = useState('');
   const [fecha, setFecha] = useState('');
@@ -108,12 +105,9 @@ export default function Contratos() {
   const [costoTotal, setCostoTotal] = useState('0');
   const [presupuestoVinculado, setPresupuestoVinculado] = useState(null);
 
-  // No se puede escribir en los datos del contrato ni guardar/PDF hasta
-  // presionar ALTA CONTRATO (lo que requiere haber encontrado un presupuesto)
   const [desbloqueado, setDesbloqueado] = useState(false);
   const bloqueado = !desbloqueado;
 
-  // ── Sugerencias de Cliente (de otros contratos, sin base de clientes aparte) ──
   const [sugerenciasClienteDatos, setSugerenciasClienteDatos] = useState([]);
 
   const CAMPOS_FECHA = ['fechaContrato', 'fechaCancelacion'];
@@ -123,8 +117,16 @@ export default function Contratos() {
     let val = e.target.value;
     if (CAMPOS_FECHA.includes(key)) val = formatearFecha(val);
     else if (CAMPOS_NUMERICOS.includes(key)) val = soloNumeros(val);
+    
     setForm((prev) => {
       const updated = { ...prev, [key]: val };
+
+      if (key === 'estado') {
+        if (val === 'Suspendido' && prev.estado !== 'Suspendido') {
+          updated.estadoPrevio = prev.estado || 'Señado';
+        }
+      }
+
       if (key === 'senia') {
         const total = parseFloat(costoTotal) || 0;
         const senia = parseFloat(val) || 0;
@@ -145,14 +147,12 @@ export default function Contratos() {
         if (vistos.has(clave)) continue;
         vistos.add(clave);
         encontrados.push(c);
-        if (encontrados.length >= 6) break; // límite de 6 sugerencias
+        if (encontrados.length >= 6) break;
       }
       setSugerenciasClienteDatos(encontrados);
     }
   };
 
-  // Al elegir una sugerencia: autocompleta Cuit-Dni, Teléfono y Domicilio
-  // con los de ese contrato anterior del mismo cliente.
   const elegirSugerenciaCliente = (c) => {
     setForm((prev) => ({
       ...prev,
@@ -171,9 +171,6 @@ export default function Contratos() {
     setResultadosDestino([]);
   };
 
-  // Al encontrar un presupuesto por cualquiera de las 4 búsquedas: completa
-  // las otras 3, y si ya existe un contrato para ese presupuesto lo carga
-  // (si no existe, deja los campos del contrato en blanco para cargarlo).
   const seleccionarPresupuesto = async (item) => {
     setBusquedaCliente(item.cliente || '');
     setBusquedaNro(item.nroPresupuesto || '');
@@ -196,14 +193,13 @@ export default function Contratos() {
       } else {
         setDocId(null);
         setForm(FORM_VACIO);
-        setDesbloqueado(false); // recién se desbloquea al presionar ALTA CONTRATO
+        setDesbloqueado(false);
       }
     } catch (error) {
       alert('Error al buscar contrato: ' + error.message);
     }
   };
 
-  // Sugerencias en vivo mientras se escribe (filtra localmente, sin ir a Firestore)
   const sugerirCliente = (texto) => {
     setBusquedaCliente(texto);
     const filtro = texto.trim().toLowerCase();
@@ -237,40 +233,6 @@ export default function Contratos() {
     );
   };
 
-  const buscarCliente = () => {
-    if (!busquedaCliente.trim()) return;
-    const filtro = busquedaCliente.trim().toLowerCase();
-    const datos = presupuestosTodos.filter((p) => (p.cliente || '').toLowerCase().includes(filtro));
-    setResultadosCliente(datos);
-    if (datos.length === 0) alert('No se encontraron presupuestos con ese cliente');
-    else if (datos.length === 1) seleccionarPresupuesto(datos[0]);
-  };
-
-  const buscarNro = () => {
-    if (!busquedaNro.trim()) return;
-    const datos = presupuestosTodos.filter((p) => String(p.nroPresupuesto || '') === busquedaNro.trim());
-    setResultadosNro(datos);
-    if (datos.length === 0) alert('No se encontró ningún presupuesto con ese número');
-    else if (datos.length === 1) seleccionarPresupuesto(datos[0]);
-  };
-
-  const buscarFecha = () => {
-    if (!fecha.trim()) return;
-    const datos = presupuestosTodos.filter((p) => (p.fecha || '') === fecha.trim());
-    setResultadosFecha(datos);
-    if (datos.length === 0) alert('No se encontraron presupuestos con esa fecha');
-    else if (datos.length === 1) seleccionarPresupuesto(datos[0]);
-  };
-
-  const buscarDestino = () => {
-    if (!destino.trim()) return;
-    const filtro = destino.trim().toLowerCase();
-    const datos = presupuestosTodos.filter((p) => (p.destino || '').toLowerCase().includes(filtro));
-    setResultadosDestino(datos);
-    if (datos.length === 0) alert('No se encontraron presupuestos con ese destino');
-    else if (datos.length === 1) seleccionarPresupuesto(datos[0]);
-  };
-
   const handleAltaContrato = () => {
     if (!clienteEncontrado) {
       alert('Primero buscá y seleccioná un presupuesto');
@@ -285,7 +247,6 @@ export default function Contratos() {
     setDesbloqueado(true);
   };
 
-  // ── Navegar contratos ya guardados (independiente de la búsqueda de arriba) ──
   const listaOrdenada = [...contratos].sort((a, b) => Number(a.nroPresupuesto) - Number(b.nroPresupuesto));
   const indiceActual = listaOrdenada.findIndex((c) => c.id === docId);
 
@@ -361,9 +322,88 @@ export default function Contratos() {
     setGuardando(false);
   };
 
+  const restablecerEstadoPrevio = () => {
+    const estadoRestablecido = form.estadoPrevio || 'Señado';
+    setForm((prev) => ({
+      ...prev,
+      estado: estadoRestablecido,
+      estadoPrevio: ''
+    }));
+  };
+
+  // ── Lógica para eliminar definitivamente ──
+  const toggleSeleccionarTodo = (e, items) => {
+    if (e.target.checked) {
+      setSeleccionados(items.map((i) => i.id));
+    } else {
+      setSeleccionados([]);
+    }
+  };
+
+  const toggleSeleccionarItem = (id) => {
+    setSeleccionados((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const eliminarDefinitivamente = async () => {
+    if (seleccionados.length === 0) return;
+
+    const confirmar = window.confirm(
+      `¿Estás seguro de eliminar definitivamente ${seleccionados.length} contrato(s)? Esta acción no se puede deshacer.`
+    );
+    if (!confirmar) return;
+
+    try {
+      for (const id of seleccionados) {
+        await deleteDoc(doc(db, 'contratos', id));
+      }
+      setSeleccionados([]);
+      alert('Contratos eliminados correctamente de la base de datos.');
+    } catch (error) {
+      alert('Error al eliminar contratos: ' + error.message);
+    }
+  };
+
+  // Función para mover el contrato Y sus servicios asociados a la papelera
+const eliminarOMoverAPapeleraContrato = async (contratoId, nroPresupuesto) => {
+  try {
+    // 1. Mover / Actualizar el Contrato (ej. marcar como 'Suspendido' o 'papelera')
+    const contratoRef = doc(db, 'contratos', contratoId);
+    await updateDoc(contratoRef, {
+      estado: 'Suspendido', // o 'eliminado'
+      eliminadoEn: Timestamp.now()
+    });
+
+    // 2. Buscar si existen servicios asociados a este nroPresupuesto
+    if (nroPresupuesto) {
+      const qServicios = query(
+        collection(db, 'servicios'),
+        where('nropresupuesto', '==', String(nroPresupuesto).trim())
+      );
+      
+      const snapServicios = await getDocs(qServicios);
+
+      // 3. Mover todos los servicios encontrados a la papelera
+      const promesasActualizacion = snapServicios.docs.map((docServicio) =>
+        updateDoc(doc(db, 'servicios', docServicio.id), {
+          estado: 'suspendido', // Muestra en la papelera
+          eliminadoEn: Timestamp.now()
+        })
+      );
+
+      await Promise.all(promesasActualizacion);
+    }
+
+    alert('El contrato y sus servicios asociados se movieron a la papelera.');
+  } catch (error) {
+    console.error('Error al mover a la papelera:', error);
+    alert('Ocurrió un error al procesar la baja: ' + error.message);
+  }
+};
+
   const copiar = () => {
     navigator.clipboard?.writeText(JSON.stringify(form, null, 2));
-    console.log('COPIAR:', form);
   };
 
   const generarPDF = async () => {
@@ -381,7 +421,7 @@ export default function Contratos() {
       const result = await ipcRenderer.invoke('guardar-pdf', {
         nombre: `Contrato_${nroPresupuesto || 'nuevo'}.pdf`,
         buffer: Array.from(pdfBytes),
-        tipo: 'contrato', // main.js usa esto para elegir la carpeta de destino
+        tipo: 'contrato',
       });
       if (result.ok) alert(`PDF guardado en: ${result.ruta}`);
       else if (result.error) alert('Error al generar PDF: ' + result.error);
@@ -398,7 +438,6 @@ export default function Contratos() {
     else alert('No se encontró ningún contrato con ese número');
   };
 
-  // ── Orden (columnas normales) + filtro cíclico (Estado) ──
   const [orden, setOrden] = useState({ campo: null, asc: true });
   const [filtroEstado, setFiltroEstado] = useState(null);
 
@@ -419,7 +458,13 @@ export default function Contratos() {
     metodoPago: (a, b) => (a.metodoPago || '').localeCompare(b.metodoPago || '', 'es', { sensitivity: 'base' }),
   };
 
-  const filtrados = contratos
+  const listaBase = contratos.filter((c) =>
+    verPapelera
+      ? (c.estado || '') === 'Suspendido'
+      : (c.estado || '') !== 'Suspendido'
+  );
+
+  const filtrados = listaBase
     .filter((c) =>
       (c.clienteNombre || '').toLowerCase().includes(busquedaTabla.toLowerCase()) ||
       (c.nroPresupuesto || '').toString().includes(busquedaTabla)
@@ -446,6 +491,12 @@ export default function Contratos() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          {form.estado === 'Suspendido' && (
+            <button onClick={restablecerEstadoPrevio}
+              style={{ padding: '9px 20px', background: '#E8F5E9', border: '1px solid #C8E6C9', color: '#2E7D32', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              Restablecer a {form.estadoPrevio || 'Señado'}
+            </button>
+          )}
           <button onClick={copiar}
             style={{ padding: '9px 20px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             Copiar
@@ -466,8 +517,6 @@ export default function Contratos() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
-
-        {/* BÚSQUEDA PRESUPUESTO */}
         <Seccion titulo="Búsqueda Presupuesto">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', columnGap: 40, rowGap: 22, marginBottom: 20 }}>
             <div>
@@ -493,7 +542,6 @@ export default function Contratos() {
           </button>
         </Seccion>
 
-        {/* NAVEGAR CONTRATOS */}
         <Seccion titulo="Navegar Contratos">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', columnGap: 28, rowGap: 12 }}>
             {btnChico('PRIMERO', irPrimero, listaOrdenada.length === 0)}
@@ -503,7 +551,6 @@ export default function Contratos() {
           </div>
         </Seccion>
 
-        {/* FECHA CONTRATO */}
         <Seccion titulo="Fecha Contrato">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36 }}>
             {campo('Fecha Contrato',
@@ -512,7 +559,6 @@ export default function Contratos() {
           </div>
         </Seccion>
 
-        {/* DATOS CLIENTE */}
         <Seccion titulo="Datos Cliente">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 22 }}>
             <div>
@@ -531,7 +577,6 @@ export default function Contratos() {
           </div>
         </Seccion>
 
-        {/* LUGARES */}
         <Seccion titulo="Lugares">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 22 }}>
             {campo('Ciudad', inp(form.ciudad, set('ciudad'), '', 'text', bloqueado))}
@@ -540,7 +585,6 @@ export default function Contratos() {
           </div>
         </Seccion>
 
-        {/* PAGO */}
         <Seccion titulo="Pago">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 22 }}>
             {campo('Seña', inp(form.senia, set('senia'), '', 'text', bloqueado))}
@@ -550,7 +594,6 @@ export default function Contratos() {
             {campo('Fecha Cancelación', inp(form.fechaCancelacion, set('fechaCancelacion'), 'DD/MM/AAAA', 'text', bloqueado))}
           </div>
         </Seccion>
-
       </div>
     </div>
   );
@@ -559,11 +602,56 @@ export default function Contratos() {
   return (
     <div style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: '#1A1A1A' }}>Contratos</div>
-        <button onClick={nuevo}
-          style={{ padding: '8px 18px', background: '#F5C400', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, color: '#1A1A1A', cursor: 'pointer' }}>
-          + Nuevo
-        </button>
+        
+        {/* Pestañas Activos / Papelera */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: '#1A1A1A' }}>
+            {verPapelera ? 'Papelera (Suspendidos)' : 'Contratos'}
+          </div>
+          
+          <button 
+            onClick={() => { setVerPapelera(false); setSeleccionados([]); }}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 6,
+              border: 'none',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              background: !verPapelera ? '#1A1A1A' : '#E0E0E0',
+              color: !verPapelera ? '#F5C400' : '#555'
+            }}>
+            Activos
+          </button>
+
+          <button 
+            onClick={() => { setVerPapelera(true); setSeleccionados([]); }}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 6,
+              border: 'none',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              background: verPapelera ? '#D32F2F' : '#E0E0E0',
+              color: verPapelera ? '#FFF' : '#555'
+            }}>
+            🗑️ Papelera ({contratos.filter(c => (c.estado || '') === 'Suspendido').length})
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          {verPapelera && seleccionados.length > 0 && (
+            <button onClick={eliminarDefinitivamente}
+              style={{ padding: '8px 18px', background: '#D32F2F', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, color: '#FFF', cursor: 'pointer' }}>
+              Eliminar Definitivamente ({seleccionados.length})
+            </button>
+          )}
+          <button onClick={nuevo}
+            style={{ padding: '8px 18px', background: '#F5C400', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, color: '#1A1A1A', cursor: 'pointer' }}>
+            + Nuevo
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
@@ -580,6 +668,17 @@ export default function Contratos() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr>
+              {/* Checkbox global en Papelera */}
+              {verPapelera && (
+                <th style={{ padding: '10px 12px', textAlign: 'center', width: 40, borderBottom: '0.5px solid #F0F0F0' }}>
+                  <input
+                    type="checkbox"
+                    checked={filtrados.length > 0 && seleccionados.length === filtrados.length}
+                    onChange={(e) => toggleSeleccionarTodo(e, filtrados)}
+                    style={{ cursor: 'pointer' }}
+                  />
+                </th>
+              )}
               {[
                 { label: 'Nro', campo: 'nro' },
                 { label: 'Cliente', campo: 'cliente' },
@@ -613,22 +712,46 @@ export default function Contratos() {
           </thead>
           <tbody>
             {cargando ? (
-              <tr><td colSpan={7} style={{ padding: 20, textAlign: 'center', color: '#888' }}>Cargando...</td></tr>
+              <tr><td colSpan={verPapelera ? 8 : 7} style={{ padding: 20, textAlign: 'center', color: '#888' }}>Cargando...</td></tr>
             ) : filtrados.length === 0 ? (
-              <tr><td colSpan={7} style={{ padding: 20, textAlign: 'center', color: '#888' }}>No hay contratos</td></tr>
+              <tr><td colSpan={verPapelera ? 8 : 7} style={{ padding: 20, textAlign: 'center', color: '#888' }}>
+                {verPapelera ? 'No hay contratos suspendidos' : 'No hay contratos activos'}
+              </td></tr>
             ) : (
               filtrados.map(row => (
-                <tr key={row.id} onClick={() => { seleccionarContrato(row); setVista('form'); }} style={{ cursor: 'pointer' }}
+                <tr key={row.id} style={{ cursor: 'pointer' }}
                   onMouseEnter={e => e.currentTarget.style.background = '#FAFAFA'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                  <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.nroPresupuesto || '-'}</td>
-                  <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.clienteNombre || '-'}</td>
-                  <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.telefono || '-'}</td>
-                  <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.domicilioCliente || '-'}</td>
-                  <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.senia ? `$${row.senia}` : '-'}</td>
-                  <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.metodoPago || '-'}</td>
-                  <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>
-                    <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#FFF8E1', color: '#F57F17' }}>
+                  
+                  {/* Checkbox por fila en Papelera */}
+                  {verPapelera && (
+                    <td style={{ padding: '12px 12px', textAlign: 'center', borderBottom: '0.5px solid #F8F8F8' }}
+                      onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={seleccionados.includes(row.id)}
+                        onChange={() => toggleSeleccionarItem(row.id)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </td>
+                  )}
+
+                  <td onClick={() => { seleccionarContrato(row); setVista('form'); }} style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.nroPresupuesto || '-'}</td>
+                  <td onClick={() => { seleccionarContrato(row); setVista('form'); }} style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.clienteNombre || '-'}</td>
+                  <td onClick={() => { seleccionarContrato(row); setVista('form'); }} style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.telefono || '-'}</td>
+                  <td onClick={() => { seleccionarContrato(row); setVista('form'); }} style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.domicilioCliente || '-'}</td>
+                  <td onClick={() => { seleccionarContrato(row); setVista('form'); }} style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.senia ? `$${row.senia}` : '-'}</td>
+                  <td onClick={() => { seleccionarContrato(row); setVista('form'); }} style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.metodoPago || '-'}</td>
+                  <td onClick={() => { seleccionarContrato(row); setVista('form'); }} style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>
+                    <span style={{
+                      display: 'inline-block',
+                      padding: '3px 8px',
+                      borderRadius: 20,
+                      fontSize: 10,
+                      fontWeight: 600,
+                      background: row.estado === 'Suspendido' ? '#FFEBEE' : '#FFF8E1',
+                      color: row.estado === 'Suspendido' ? '#C62828' : '#F57F17'
+                    }}>
                       {row.estado || '-'}
                     </span>
                   </td>

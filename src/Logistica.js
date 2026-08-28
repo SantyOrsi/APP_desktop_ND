@@ -17,6 +17,11 @@ const inp = (value, onChange, placeholder = '', readOnly = false, fontSize = 13)
     style={{ padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize, background: readOnly ? '#F0F0F0' : '#F8F8F8', outline: 'none', width: '100%', color: readOnly ? '#888' : '#1A1A1A' }} />
 );
 
+const txtArea = (value, onChange, placeholder = '', readOnly = false, rows = 3) => (
+  <textarea value={value || ''} onChange={onChange} placeholder={placeholder} readOnly={readOnly} rows={rows}
+    style={{ padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: readOnly ? '#F0F0F0' : '#F8F8F8', outline: 'none', width: '100%', color: readOnly ? '#888' : '#1A1A1A', resize: 'vertical', fontFamily: 'inherit' }} />
+);
+
 const campo = (label, children) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingRight: 16 }}>
     <label style={{ fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</label>
@@ -31,13 +36,6 @@ const Seccion = ({ titulo, children }) => (
     </div>
     <div style={{ padding: 24 }}>{children}</div>
   </div>
-);
-
-const btnBuscar = (onClick) => (
-  <button onClick={onClick}
-    style={{ padding: '9px 0', background: '#F5C400', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 700, color: '#1A1A1A', cursor: 'pointer', width: '100%' }}>
-    BUSCAR
-  </button>
 );
 
 const resultadoItem = (texto, onClick) => (
@@ -64,6 +62,7 @@ export default function Logistica() {
 
   const [choferes, setChoferes] = useState(['']);
   const [unidadesSeleccionadas, setUnidadesSeleccionadas] = useState([]);
+  const [otraUnidad, setOtraUnidad] = useState('');
   const [categoriaAbierta, setCategoriaAbierta] = useState(null);
   const [dineroViaje, setDineroViaje] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -75,6 +74,7 @@ export default function Logistica() {
     setChequeandoBusqueda(false);
     setChoferes(Array.isArray(s.chofer) ? (s.chofer.length ? s.chofer : ['']) : (s.chofer ? [s.chofer] : ['']));
     setUnidadesSeleccionadas(Array.isArray(s.unidad) ? s.unidad : (s.unidad ? [s.unidad] : []));
+    setOtraUnidad(s.otraUnidad || '');
     setDineroViaje(s.dineroViaje || '');
     setCategoriaAbierta(null);
     setResultados([]);
@@ -86,6 +86,7 @@ export default function Logistica() {
     setChequeandoBusqueda(true);
     setChoferes(['']);
     setUnidadesSeleccionadas([]);
+    setOtraUnidad('');
     setDineroViaje('');
     setCategoriaAbierta(null);
     setBusquedaCliente(''); setBusquedaDestino(''); setBusquedaNro(''); setBusquedaFecha('');
@@ -131,6 +132,7 @@ export default function Logistica() {
       await updateDoc(doc(db, 'servicios', servicioActivo.id), {
         chofer: choferesLimpios,
         unidad: unidadesSeleccionadas,
+        otraUnidad: otraUnidad.trim(),
         dineroViaje: dineroViaje.trim(),
         actualizadoEn: Timestamp.now(),
       });
@@ -144,14 +146,15 @@ export default function Logistica() {
 
   const [orden, setOrden] = useState({ campo: 'salida', asc: false });
   const [filtroEstado, setFiltroEstado] = useState(null);
-  const [modoVista, setModoVista] = useState('pendientes'); // 'pendientes' | 'todos'
+  const [modoVista, setModoVista] = useState('pendientes');
 
   const presuPorNro = {};
   presupuestosTodos.forEach((p) => { presuPorNro[String(p.nroPresupuesto)] = p; });
 
-  // "Trafico hecho" = ya tiene unidad Y chofer asignados
+  const presuActivo = servicioActivo ? presuPorNro[servicioActivo.nropresupuesto] : null;
+
   const tieneTraficoHecho = (s) => {
-    const tieneUnidad = Array.isArray(s.unidad) ? s.unidad.length > 0 : !!s.unidad;
+    const tieneUnidad = (Array.isArray(s.unidad) ? s.unidad.length > 0 : !!s.unidad) || !!s.otraUnidad;
     const tieneChofer = Array.isArray(s.chofer) ? s.chofer.length > 0 : !!s.chofer;
     return tieneUnidad && tieneChofer;
   };
@@ -316,6 +319,11 @@ export default function Logistica() {
             )}
           </div>
 
+          {/* CAMPO OTRA UNIDAD (SUBCONTRATADAS) */}
+          <div style={{ marginTop: 22 }}>
+            {campo('Otra unidad (Subalquilada / Subcontratada)', txtArea(otraUnidad, (e) => setOtraUnidad(e.target.value), 'Describir unidad o empresa subcontratada...', bloqueado, 3))}
+          </div>
+
           <div style={{ marginTop: 22 }}>
             <label style={{ fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>Dinero para viaje</label>
             <input
@@ -340,6 +348,7 @@ export default function Logistica() {
             {campo('Estado', inp(ESTADO_LABEL[servicioActivo?.estado] || servicioActivo?.estado, () => {}, '', true))}
             {campo('Cuit', inp(servicioActivo?.cuit, () => {}, '', true))}
             {campo('Responsable', inp(servicioActivo?.responsable, () => {}, '', true))}
+            {campo('Telefono Responsable', inp(servicioActivo?.telefonoResponsable, () => {}, '', true))}
           </div>
         </Seccion>
 
@@ -358,6 +367,21 @@ export default function Logistica() {
             {campo('Hora Retorno', inp(servicioActivo?.retornoHora, () => {}, '', true))}
           </div>
         </Seccion>
+        <Seccion titulo="Vehículo, Kilometraje y Servicios">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 22 }}>
+          {campo('Cap. Transporte / Pax', inp(presuActivo?.capacidad || servicioActivo?.capacidad, () => {}, '', true))}
+          {campo('Km. a Recorrer', inp(presuActivo?.kmRecorrer, () => {}, '', true))}
+          {campo('Aloj. y Viáticos Cargo', inp(presuActivo?.alojViaticosCargo, () => {}, '', true))}
+          {campo('Importe Aloj. y Viáticos', inp(presuActivo?.importAlojViaticos, () => {}, '', true))}
+        </div>
+
+        <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', columnGap: 36, rowGap: 18 }}>
+          {campo('Tipo / Caract. Transporte', txtArea(presuActivo?.tipoTransporte, () => {}, '', true, 3))}
+          {campo('Movimientos', txtArea(presuActivo?.movimiento === 'SI' ? presuActivo?.movimientoDetalle || 'SÍ' : 'NO', () => {}, '', true, 3))}
+          {campo('Adicionales', txtArea(presuActivo?.adicionales === 'SI' ? presuActivo?.adicionalesDetalle || 'SÍ' : 'NO', () => {}, '', true, 3))}
+          {campo('Info Adicional', txtArea(presuActivo?.infoAdicional === 'SI' ? presuActivo?.infoAdicionalDetalle || 'SÍ' : 'NO', () => {}, '', true, 3))}
+          </div>
+      </Seccion>
 
       </div>
     </div>

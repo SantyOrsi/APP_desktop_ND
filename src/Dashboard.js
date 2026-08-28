@@ -180,7 +180,8 @@ function RelojInfo() {
     'es-AR',
     {
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: false
     }
   );
 
@@ -352,9 +353,10 @@ export default function Dashboard({
 
 
   const {
-    datos: contratos,
+    datos: contratosTodos,
     cargando: cargandoContratos
   } = useColeccion('contratos');
+  const contratos = contratosTodos.filter(c => (c.estado || '') !== 'Suspendido');
 
 
   const datosMostrados =

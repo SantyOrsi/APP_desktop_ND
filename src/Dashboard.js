@@ -180,8 +180,7 @@ function RelojInfo() {
     'es-AR',
     {
       hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
+      minute: '2-digit'
     }
   );
 
@@ -341,9 +340,10 @@ export default function Dashboard({
   // ==========================================
 
   const {
-    datos: servicios,
+    datos: serviciosTodos,
     cargando: cargandoServicios
   } = useColeccion('servicios');
+  const servicios = serviciosTodos.filter(s => (s.estado || '') !== 'suspendido' && (s.estado || '') !== 'eliminado');
 
 
   const {

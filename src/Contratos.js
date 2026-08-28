@@ -308,6 +308,8 @@ export default function Contratos() {
       };
       const q = query(collection(db, 'contratos'), where('nroPresupuesto', '==', nroPresupuesto.trim()));
       const snap = await getDocs(q);
+      const estadoAnterior = !snap.empty ? (snap.docs[0].data().estado || '') : null;
+
       if (!snap.empty) {
         await updateDoc(doc(db, 'contratos', snap.docs[0].id), datos);
         setDocId(snap.docs[0].id);
@@ -315,6 +317,15 @@ export default function Contratos() {
         datos.creadoEn = Timestamp.now();
         const ref = await addDoc(collection(db, 'contratos'), datos);
         setDocId(ref.id);
+      }
+
+      // Si el contrato pasó a "Suspendido", los servicios asociados van a la papelera
+      if (form.estado === 'Suspendido' && estadoAnterior !== 'Suspendido') {
+        await moverServiciosAPapelera(nroPresupuesto);
+      }
+      // Si el contrato salió de "Suspendido" (se restableció), sus servicios se restauran
+      if (estadoAnterior === 'Suspendido' && form.estado !== 'Suspendido') {
+        await restaurarServiciosDelContrato(nroPresupuesto);
       }
     } catch (error) {
       alert('Error al guardar: ' + error.message);
@@ -350,13 +361,26 @@ export default function Contratos() {
     if (seleccionados.length === 0) return;
 
     const confirmar = window.confirm(
-      `¿Estás seguro de eliminar definitivamente ${seleccionados.length} contrato(s)? Esta acción no se puede deshacer.`
+      `¿Estás seguro de eliminar definitivamente ${seleccionados.length} contrato(s)? Esta acción también eliminará los servicios asociados que estén en la papelera y no se puede deshacer.`
     );
     if (!confirmar) return;
 
     try {
       for (const id of seleccionados) {
+        const contrato = contratos.find((c) => c.id === id);
         await deleteDoc(doc(db, 'contratos', id));
+
+        if (contrato?.nroPresupuesto) {
+          const qServicios = query(
+            collection(db, 'servicios'),
+            where('nropresupuesto', '==', String(contrato.nroPresupuesto).trim())
+          );
+          const snapServicios = await getDocs(qServicios);
+          const borrados = snapServicios.docs
+            .filter((d) => (d.data().estado || '') === 'suspendido')
+            .map((d) => deleteDoc(doc(db, 'servicios', d.id)));
+          await Promise.all(borrados);
+        }
       }
       setSeleccionados([]);
       alert('Contratos eliminados correctamente de la base de datos.');
@@ -365,42 +389,55 @@ export default function Contratos() {
     }
   };
 
-  // Función para mover el contrato Y sus servicios asociados a la papelera
-const eliminarOMoverAPapeleraContrato = async (contratoId, nroPresupuesto) => {
-  try {
-    // 1. Mover / Actualizar el Contrato (ej. marcar como 'Suspendido' o 'papelera')
-    const contratoRef = doc(db, 'contratos', contratoId);
-    await updateDoc(contratoRef, {
-      estado: 'Suspendido', // o 'eliminado'
-      eliminadoEn: Timestamp.now()
-    });
-
-    // 2. Buscar si existen servicios asociados a este nroPresupuesto
-    if (nroPresupuesto) {
+  // Mueve a la papelera los servicios vinculados a un contrato recién suspendido,
+  // guardando el estado que tenían para poder restaurarlos después.
+  const moverServiciosAPapelera = async (nroPresupuesto) => {
+    if (!nroPresupuesto) return;
+    try {
       const qServicios = query(
         collection(db, 'servicios'),
         where('nropresupuesto', '==', String(nroPresupuesto).trim())
       );
-      
       const snapServicios = await getDocs(qServicios);
-
-      // 3. Mover todos los servicios encontrados a la papelera
-      const promesasActualizacion = snapServicios.docs.map((docServicio) =>
-        updateDoc(doc(db, 'servicios', docServicio.id), {
-          estado: 'suspendido', // Muestra en la papelera
-          eliminadoEn: Timestamp.now()
-        })
-      );
-
-      await Promise.all(promesasActualizacion);
+      const promesas = snapServicios.docs
+        .filter((docServicio) => (docServicio.data().estado || '') !== 'suspendido')
+        .map((docServicio) =>
+          updateDoc(doc(db, 'servicios', docServicio.id), {
+            estado: 'suspendido',
+            estadoPrevio: docServicio.data().estado || 'pendiente',
+            eliminadoEn: Timestamp.now(),
+          })
+        );
+      await Promise.all(promesas);
+    } catch (error) {
+      console.error('Error al mover servicios a la papelera:', error);
     }
+  };
 
-    alert('El contrato y sus servicios asociados se movieron a la papelera.');
-  } catch (error) {
-    console.error('Error al mover a la papelera:', error);
-    alert('Ocurrió un error al procesar la baja: ' + error.message);
-  }
-};
+  // Restaura los servicios vinculados a un contrato que se restableció desde
+  // la papelera, devolviéndolos al estado que tenían antes de suspenderse.
+  const restaurarServiciosDelContrato = async (nroPresupuesto) => {
+    if (!nroPresupuesto) return;
+    try {
+      const qServicios = query(
+        collection(db, 'servicios'),
+        where('nropresupuesto', '==', String(nroPresupuesto).trim())
+      );
+      const snapServicios = await getDocs(qServicios);
+      const promesas = snapServicios.docs
+        .filter((docServicio) => (docServicio.data().estado || '') === 'suspendido')
+        .map((docServicio) =>
+          updateDoc(doc(db, 'servicios', docServicio.id), {
+            estado: docServicio.data().estadoPrevio || 'pendiente',
+            estadoPrevio: '',
+            eliminadoEn: null,
+          })
+        );
+      await Promise.all(promesas);
+    } catch (error) {
+      console.error('Error al restaurar servicios:', error);
+    }
+  };
 
   const copiar = () => {
     navigator.clipboard?.writeText(JSON.stringify(form, null, 2));

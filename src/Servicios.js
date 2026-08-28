@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useColeccion } from './hooks/useFirestore';
 import { db } from './constants/firebase';
-import { collection, addDoc, updateDoc, doc, Timestamp, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import { generarServicioPDF } from './helpers/generarServicioPDF';
 const { ipcRenderer } = window.require('electron');
 
@@ -107,9 +107,13 @@ export default function Servicios() {
   const { datos: presupuestosTodos } = useColeccion('presupuestos');
   const [busquedaTabla, setBusquedaTabla] = useState('');
   const [vista, setVista] = useState('tabla');
+  const [verPapelera, setVerPapelera] = useState(false);
   const [form, setForm] = useState(FORM_VACIO);
   const [docId, setDocId] = useState(null);
   const [guardando, setGuardando] = useState(false);
+
+  // ── Selección múltiple para eliminar (papelera) ──
+  const [seleccionados, setSeleccionados] = useState([]);
 
   // ── Búsqueda (Cliente / Destino / Nro Presupuesto / Fecha) ──
   const [busquedaCliente, setBusquedaCliente] = useState('');
@@ -346,18 +350,70 @@ export default function Servicios() {
 
   const ESTADO_LABEL = Object.fromEntries(OPCIONES_ESTADO.map((o) => [o.key, o.label]));
 
-  const filtrados = servicios
-    .filter((s) =>
-      (s.contacto || '').toLowerCase().includes(busquedaTabla.toLowerCase()) ||
-      (s.nropresupuesto || '').toString().includes(busquedaTabla)
-    )
-    .filter((s) => !filtroEstado || s.estado === filtroEstado)
-    .sort((a, b) => {
-      if (!orden.campo) return 0;
-      const resultado = COMPARADORES[orden.campo](a, b);
-      return orden.asc ? resultado : -resultado;
-    });
+const serviciosActivos = servicios.filter((s) => s.estado !== 'suspendido' && s.estado !== 'eliminado');
+const serviciosPapelera = servicios.filter((s) => s.estado === 'suspendido');
 
+const listaBase = verPapelera ? serviciosPapelera : serviciosActivos;
+
+const filtrados = listaBase
+  .filter((s) =>
+    (s.contacto || '').toLowerCase().includes(busquedaTabla.toLowerCase()) ||
+    (s.nropresupuesto || '').toString().includes(busquedaTabla)
+  )
+  .filter((s) => verPapelera || !filtroEstado || s.estado === filtroEstado)
+  .sort((a, b) => {
+    if (!orden.campo) return 0;
+    const resultado = COMPARADORES[orden.campo](a, b);
+    return orden.asc ? resultado : -resultado;
+  });
+
+  // ── Selección múltiple en la papelera ──
+  const toggleSeleccionarTodo = (e, items) => {
+    if (e.target.checked) {
+      setSeleccionados(items.map((i) => i.id));
+    } else {
+      setSeleccionados([]);
+    }
+  };
+
+  const toggleSeleccionarItem = (id) => {
+    setSeleccionados((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  // Devuelve un servicio suspendido al estado que tenía antes de ir a la papelera
+  const restaurarServicio = async (row) => {
+    try {
+      await updateDoc(doc(db, 'servicios', row.id), {
+        estado: row.estadoPrevio || 'pendiente',
+        estadoPrevio: '',
+        eliminadoEn: null,
+      });
+    } catch (error) {
+      alert('Error al restaurar el servicio: ' + error.message);
+    }
+  };
+
+  // Elimina definitivamente de la base de datos los servicios seleccionados en la papelera
+  const eliminarDefinitivamente = async () => {
+    if (seleccionados.length === 0) return;
+
+    const confirmar = window.confirm(
+      `¿Estás seguro de eliminar definitivamente ${seleccionados.length} servicio(s)? Esta acción no se puede deshacer.`
+    );
+    if (!confirmar) return;
+
+    try {
+      for (const id of seleccionados) {
+        await deleteDoc(doc(db, 'servicios', id));
+      }
+      setSeleccionados([]);
+      alert('Servicios eliminados correctamente de la base de datos.');
+    } catch (error) {
+      alert('Error al eliminar servicios: ' + error.message);
+    }
+  };
   // ── FORMULARIO ──
   if (vista === 'form') return (
     <div style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
@@ -483,11 +539,58 @@ export default function Servicios() {
   return (
     <div style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: '#1A1A1A' }}>Servicios</div>
-        <button onClick={nuevo}
-          style={{ padding: '8px 18px', background: '#F5C400', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, color: '#1A1A1A', cursor: 'pointer' }}>
-          + Nuevo
-        </button>
+
+        {/* Pestañas Activos / Papelera */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: '#1A1A1A' }}>
+            {verPapelera ? 'Papelera (Suspendidos)' : 'Servicios'}
+          </div>
+
+          <button
+            onClick={() => { setVerPapelera(false); setSeleccionados([]); }}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 6,
+              border: 'none',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              background: !verPapelera ? '#1A1A1A' : '#E0E0E0',
+              color: !verPapelera ? '#F5C400' : '#555'
+            }}>
+            Activos
+          </button>
+
+          <button
+            onClick={() => { setVerPapelera(true); setSeleccionados([]); }}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 6,
+              border: 'none',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              background: verPapelera ? '#D32F2F' : '#E0E0E0',
+              color: verPapelera ? '#FFF' : '#555'
+            }}>
+            🗑️ Papelera ({serviciosPapelera.length})
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          {verPapelera && seleccionados.length > 0 && (
+            <button onClick={eliminarDefinitivamente}
+              style={{ padding: '8px 18px', background: '#D32F2F', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, color: '#FFF', cursor: 'pointer' }}>
+              Eliminar Definitivamente ({seleccionados.length})
+            </button>
+          )}
+          {!verPapelera && (
+            <button onClick={nuevo}
+              style={{ padding: '8px 18px', background: '#F5C400', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, color: '#1A1A1A', cursor: 'pointer' }}>
+              + Nuevo
+            </button>
+          )}
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
@@ -504,6 +607,17 @@ export default function Servicios() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr>
+              {/* Checkbox global en Papelera */}
+              {verPapelera && (
+                <th style={{ padding: '10px 12px', textAlign: 'center', width: 40, borderBottom: '0.5px solid #F0F0F0' }}>
+                  <input
+                    type="checkbox"
+                    checked={filtrados.length > 0 && seleccionados.length === filtrados.length}
+                    onChange={(e) => toggleSeleccionarTodo(e, filtrados)}
+                    style={{ cursor: 'pointer' }}
+                  />
+                </th>
+              )}
               {[
                 { label: 'Nro', campo: 'nro' },
                 { label: 'Cliente', campo: 'cliente' },
@@ -529,35 +643,74 @@ export default function Servicios() {
                   padding: '10px 20px', textAlign: 'left', fontSize: 10, fontWeight: 600,
                   color: filtroEstado ? '#1A1A1A' : '#888', textTransform: 'uppercase',
                   letterSpacing: 0.5, borderBottom: '0.5px solid #F0F0F0',
-                  cursor: 'pointer', userSelect: 'none',
+                  cursor: verPapelera ? 'default' : 'pointer', userSelect: 'none',
                 }}>
-                Estado{filtroEstado ? ` (${ESTADO_LABEL[filtroEstado]})` : ''}
+                Estado{filtroEstado && !verPapelera ? ` (${ESTADO_LABEL[filtroEstado]})` : ''}
               </th>
+              {/* Columna de acción en Papelera */}
+              {verPapelera && (
+                <th style={{
+                  padding: '10px 20px', textAlign: 'left', fontSize: 10, fontWeight: 600,
+                  color: '#888', textTransform: 'uppercase', letterSpacing: 0.5,
+                  borderBottom: '0.5px solid #F0F0F0',
+                }}>
+                  Acción
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
             {cargando ? (
-              <tr><td colSpan={7} style={{ padding: 20, textAlign: 'center', color: '#888' }}>Cargando...</td></tr>
+              <tr><td colSpan={verPapelera ? 9 : 7} style={{ padding: 20, textAlign: 'center', color: '#888' }}>Cargando...</td></tr>
             ) : filtrados.length === 0 ? (
-              <tr><td colSpan={7} style={{ padding: 20, textAlign: 'center', color: '#888' }}>No hay servicios</td></tr>
+              <tr><td colSpan={verPapelera ? 9 : 7} style={{ padding: 20, textAlign: 'center', color: '#888' }}>
+                {verPapelera ? 'No hay servicios suspendidos' : 'No hay servicios'}
+              </td></tr>
             ) : (
               filtrados.map(row => {
                 const ec = ESTADO_COLOR[row.estado] || ESTADO_COLOR.pendiente;
                 return (
-                  <tr key={row.id} onClick={() => { seleccionar({ ...row, _tipo: 'servicio' }); setVista('form'); }} style={{ cursor: 'pointer' }}
+                  <tr key={row.id} style={{ cursor: 'pointer' }}
                     onMouseEnter={e => e.currentTarget.style.background = '#FAFAFA'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                    <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.nropresupuesto || '-'}</td>
-                    <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.contacto || '-'}</td>
-                    <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.telefono || '-'}</td>
-                    <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.salidaFecha || '-'}</td>
-                    <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.retornoFecha || '-'}</td>
-                    <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.domicilioOrigen && row.domicilioDestino ? `${row.domicilioOrigen} → ${row.domicilioDestino}` : '-'}</td>
-                    <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>
+
+                    {/* Checkbox por fila en Papelera */}
+                    {verPapelera && (
+                      <td style={{ padding: '12px 12px', textAlign: 'center', borderBottom: '0.5px solid #F8F8F8' }}
+                        onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={seleccionados.includes(row.id)}
+                          onChange={() => toggleSeleccionarItem(row.id)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                      </td>
+                    )}
+
+                    <td onClick={() => { seleccionar({ ...row, _tipo: 'servicio' }); setVista('form'); }} style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.nropresupuesto || '-'}</td>
+                    <td onClick={() => { seleccionar({ ...row, _tipo: 'servicio' }); setVista('form'); }} style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.contacto || '-'}</td>
+                    <td onClick={() => { seleccionar({ ...row, _tipo: 'servicio' }); setVista('form'); }} style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.telefono || '-'}</td>
+                    <td onClick={() => { seleccionar({ ...row, _tipo: 'servicio' }); setVista('form'); }} style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.salidaFecha || '-'}</td>
+                    <td onClick={() => { seleccionar({ ...row, _tipo: 'servicio' }); setVista('form'); }} style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.retornoFecha || '-'}</td>
+                    <td onClick={() => { seleccionar({ ...row, _tipo: 'servicio' }); setVista('form'); }} style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.domicilioOrigen && row.domicilioDestino ? `${row.domicilioOrigen} → ${row.domicilioDestino}` : '-'}</td>
+                    <td onClick={() => { seleccionar({ ...row, _tipo: 'servicio' }); setVista('form'); }} style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>
                       <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: ec.bg, color: ec.color }}>
-                        {ESTADO_LABEL[row.estado] || row.estado || '-'}
+                        {verPapelera
+                          ? `Suspendido (era ${ESTADO_LABEL[row.estadoPrevio] || 'Pendiente'})`
+                          : (ESTADO_LABEL[row.estado] || row.estado || '-')}
                       </span>
                     </td>
+
+                    {/* Botón Restablecer en Papelera */}
+                    {verPapelera && (
+                      <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}
+                        onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => restaurarServicio(row)}
+                          style={{ padding: '6px 14px', background: '#E8F5E9', border: '1px solid #C8E6C9', color: '#2E7D32', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                          Restablecer
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })

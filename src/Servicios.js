@@ -102,7 +102,8 @@ const ESTADO_COLOR = {
   completo: { bg: '#E8F5E9', color: '#2E7D32' },
 };
 
-export default function Servicios() {
+export default function Servicios({ rol }) {
+  const esAdmin = rol === 'admin';
   const { datos: servicios, cargando } = useColeccion('servicios');
   const { datos: presupuestosTodos } = useColeccion('presupuestos');
   const [busquedaTabla, setBusquedaTabla] = useState('');
@@ -397,6 +398,10 @@ const filtrados = listaBase
 
   // Elimina definitivamente de la base de datos los servicios seleccionados en la papelera
   const eliminarDefinitivamente = async () => {
+    if (!esAdmin) {
+      alert('Solo un administrador puede eliminar servicios de la base de datos.');
+      return;
+    }
     if (seleccionados.length === 0) return;
 
     const confirmar = window.confirm(
@@ -578,7 +583,7 @@ const filtrados = listaBase
         </div>
 
         <div style={{ display: 'flex', gap: 8 }}>
-          {verPapelera && seleccionados.length > 0 && (
+          {verPapelera && esAdmin && seleccionados.length > 0 && (
             <button onClick={eliminarDefinitivamente}
               style={{ padding: '8px 18px', background: '#D32F2F', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, color: '#FFF', cursor: 'pointer' }}>
               Eliminar Definitivamente ({seleccionados.length})
@@ -607,8 +612,8 @@ const filtrados = listaBase
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr>
-              {/* Checkbox global en Papelera */}
-              {verPapelera && (
+              {/* Checkbox global en Papelera (solo admins pueden eliminar) */}
+              {verPapelera && esAdmin && (
                 <th style={{ padding: '10px 12px', textAlign: 'center', width: 40, borderBottom: '0.5px solid #F0F0F0' }}>
                   <input
                     type="checkbox"
@@ -661,9 +666,9 @@ const filtrados = listaBase
           </thead>
           <tbody>
             {cargando ? (
-              <tr><td colSpan={verPapelera ? 9 : 7} style={{ padding: 20, textAlign: 'center', color: '#888' }}>Cargando...</td></tr>
+              <tr><td colSpan={verPapelera ? (esAdmin ? 9 : 8) : 7} style={{ padding: 20, textAlign: 'center', color: '#888' }}>Cargando...</td></tr>
             ) : filtrados.length === 0 ? (
-              <tr><td colSpan={verPapelera ? 9 : 7} style={{ padding: 20, textAlign: 'center', color: '#888' }}>
+              <tr><td colSpan={verPapelera ? (esAdmin ? 9 : 8) : 7} style={{ padding: 20, textAlign: 'center', color: '#888' }}>
                 {verPapelera ? 'No hay servicios suspendidos' : 'No hay servicios'}
               </td></tr>
             ) : (
@@ -674,8 +679,8 @@ const filtrados = listaBase
                     onMouseEnter={e => e.currentTarget.style.background = '#FAFAFA'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
 
-                    {/* Checkbox por fila en Papelera */}
-                    {verPapelera && (
+                    {/* Checkbox por fila en Papelera (solo admins pueden eliminar) */}
+                    {verPapelera && esAdmin && (
                       <td style={{ padding: '12px 12px', textAlign: 'center', borderBottom: '0.5px solid #F8F8F8' }}
                         onClick={(e) => e.stopPropagation()}>
                         <input

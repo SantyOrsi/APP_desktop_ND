@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useColeccion } from './hooks/useFirestore';
 import { db } from './constants/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, where, getDocs } from 'firebase/firestore';
@@ -72,13 +72,14 @@ const btnChico = (texto, onClick, disabled) => (
 );
 
 const resultadoItem = (texto, onClick) => (
-  <div onClick={onClick} onMouseDown={(e) => e.preventDefault()}
+  <div onClick={onClick}
     style={{ padding: '8px 10px', background: '#F8F8F8', border: '0.5px solid #E0E0E0', borderRadius: 6, fontSize: 12, marginTop: 4, cursor: 'pointer' }}>
     {texto}
   </div>
 );
 
-export default function Contratos() {
+export default function Contratos({ rol }) {
+  const esAdmin = rol === 'admin';
   const { datos: contratos, cargando } = useColeccion('contratos');
   const { datos: presupuestosTodos } = useColeccion('presupuestos');
   const [busquedaTabla, setBusquedaTabla] = useState('');
@@ -109,7 +110,6 @@ export default function Contratos() {
   const bloqueado = !desbloqueado;
 
   const [sugerenciasClienteDatos, setSugerenciasClienteDatos] = useState([]);
-  const [clienteEnfocado, setClienteEnfocado] = useState(false);
 
   const CAMPOS_FECHA = ['fechaContrato', 'fechaCancelacion'];
   const CAMPOS_NUMERICOS = ['cuitDni', 'telefono', 'senia', 'saldo'];
@@ -135,31 +135,25 @@ export default function Contratos() {
       }
       return updated;
     });
+
+    if (key === 'clienteNombre') {
+      const filtro = val.trim().toLowerCase();
+      if (!filtro) { setSugerenciasClienteDatos([]); return; }
+      const vistos = new Set();
+      const encontrados = [];
+      for (const c of contratos) {
+        const nombre = (c.clienteNombre || '').trim();
+        if (!nombre || !nombre.toLowerCase().includes(filtro)) continue;
+        const clave = nombre.toLowerCase();
+        if (vistos.has(clave)) continue;
+        vistos.add(clave);
+        encontrados.push(c);
+        if (encontrados.length >= 6) break;
+      }
+      setSugerenciasClienteDatos(encontrados);
+    }
   };
 
-  // Sugerencias de Cliente: se recalculan solas cada vez que cambia el
-  // nombre, sea porque lo tipeaste vos o porque se completó solo al
-  // presionar ALTA CONTRATO (antes solo reaccionaba si lo escribías).
-  useEffect(() => {
-    const filtro = (form.clienteNombre || '').trim().toLowerCase();
-    if (!filtro) { setSugerenciasClienteDatos([]); return; }
-    const vistos = new Set();
-    const encontrados = [];
-    for (const c of contratos) {
-      const nombre = (c.clienteNombre || '').trim();
-      if (!nombre || !nombre.toLowerCase().includes(filtro)) continue;
-      if (nombre.toLowerCase() === filtro) continue; // no sugerir el mismo que ya está puesto
-      const clave = nombre.toLowerCase();
-      if (vistos.has(clave)) continue;
-      vistos.add(clave);
-      encontrados.push(c);
-      if (encontrados.length >= 6) break; // límite de 6 sugerencias
-    }
-    setSugerenciasClienteDatos(encontrados);
-  }, [form.clienteNombre, contratos]);
-
-  // Al elegir una sugerencia: autocompleta Cuit-Dni, Teléfono y Domicilio
-  // con los de ese contrato anterior del mismo cliente.
   const elegirSugerenciaCliente = (c) => {
     setForm((prev) => ({
       ...prev,
@@ -365,6 +359,10 @@ export default function Contratos() {
   };
 
   const eliminarDefinitivamente = async () => {
+    if (!esAdmin) {
+      alert('Solo un administrador puede eliminar contratos de la base de datos.');
+      return;
+    }
     if (seleccionados.length === 0) return;
 
     const confirmar = window.confirm(
@@ -606,22 +604,11 @@ export default function Contratos() {
         <Seccion titulo="Datos Cliente">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 22 }}>
             <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5 }}>Cliente</label>
-              <input
-                type="text"
-                value={form.clienteNombre || ''}
-                onChange={set('clienteNombre')}
-                readOnly={bloqueado}
-                onFocus={() => setClienteEnfocado(true)}
-                onBlur={() => setClienteEnfocado(false)}
-                onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                className={bloqueado ? '' : 'nd-input'}
-                style={{ padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: bloqueado ? '#F0F0F0' : '#F8F8F8', outline: 'none', width: '100%', color: bloqueado ? '#888' : '#1A1A1A', transition: 'background 0.15s' }}
-              />
-              {!bloqueado && clienteEnfocado && sugerenciasClienteDatos.length > 0 && (
+              {campo('Cliente', inp(form.clienteNombre, set('clienteNombre'), '', 'text', bloqueado))}
+              {!bloqueado && sugerenciasClienteDatos.length > 0 && (
                 <div style={{ marginTop: 4 }}>
                   {sugerenciasClienteDatos.map((c) =>
-                    resultadoItem(c.clienteNombre, () => { elegirSugerenciaCliente(c); setClienteEnfocado(false); })
+                    resultadoItem(c.clienteNombre, () => elegirSugerenciaCliente(c))
                   )}
                 </div>
               )}
@@ -696,7 +683,7 @@ export default function Contratos() {
         </div>
 
         <div style={{ display: 'flex', gap: 8 }}>
-          {verPapelera && seleccionados.length > 0 && (
+          {verPapelera && esAdmin && seleccionados.length > 0 && (
             <button onClick={eliminarDefinitivamente}
               style={{ padding: '8px 18px', background: '#D32F2F', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, color: '#FFF', cursor: 'pointer' }}>
               Eliminar Definitivamente ({seleccionados.length})
@@ -723,8 +710,8 @@ export default function Contratos() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr>
-              {/* Checkbox global en Papelera */}
-              {verPapelera && (
+              {/* Checkbox global en Papelera (solo admins pueden eliminar) */}
+              {verPapelera && esAdmin && (
                 <th style={{ padding: '10px 12px', textAlign: 'center', width: 40, borderBottom: '0.5px solid #F0F0F0' }}>
                   <input
                     type="checkbox"
@@ -767,9 +754,9 @@ export default function Contratos() {
           </thead>
           <tbody>
             {cargando ? (
-              <tr><td colSpan={verPapelera ? 8 : 7} style={{ padding: 20, textAlign: 'center', color: '#888' }}>Cargando...</td></tr>
+              <tr><td colSpan={verPapelera && esAdmin ? 8 : 7} style={{ padding: 20, textAlign: 'center', color: '#888' }}>Cargando...</td></tr>
             ) : filtrados.length === 0 ? (
-              <tr><td colSpan={verPapelera ? 8 : 7} style={{ padding: 20, textAlign: 'center', color: '#888' }}>
+              <tr><td colSpan={verPapelera && esAdmin ? 8 : 7} style={{ padding: 20, textAlign: 'center', color: '#888' }}>
                 {verPapelera ? 'No hay contratos suspendidos' : 'No hay contratos activos'}
               </td></tr>
             ) : (
@@ -778,8 +765,8 @@ export default function Contratos() {
                   onMouseEnter={e => e.currentTarget.style.background = '#FAFAFA'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                   
-                  {/* Checkbox por fila en Papelera */}
-                  {verPapelera && (
+                  {/* Checkbox por fila en Papelera (solo admins pueden eliminar) */}
+                  {verPapelera && esAdmin && (
                     <td style={{ padding: '12px 12px', textAlign: 'center', borderBottom: '0.5px solid #F8F8F8' }}
                       onClick={(e) => e.stopPropagation()}>
                       <input

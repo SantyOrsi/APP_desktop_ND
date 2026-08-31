@@ -995,7 +995,7 @@ export default function Dashboard({
 
       if (seccion === 'contratos') {
 
-        return <Contratos />;
+        return <Contratos rol={rol} />;
 
       }
 
@@ -1005,7 +1005,7 @@ export default function Dashboard({
 
       if (seccion === 'servicios') {
 
-        return <Servicios />;
+        return <Servicios rol={rol} />;
 
       }
 

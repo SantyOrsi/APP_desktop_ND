@@ -851,6 +851,7 @@ export default function Dashboard({
 
       const permisoSeccionAprobado =
         esAdminSecretaria ||
+        (seccion === 'logistica' && rol === 'logistica') ||
         solicitudSeccion?.estado === 'aprobada';
 
 

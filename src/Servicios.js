@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
-import { useColeccion } from './hooks/useFirestore';
+import React, { useState, useMemo } from 'react';
 import { db } from './constants/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, Timestamp, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { generarServicioPDF } from './helpers/generarServicioPDF';
 const { ipcRenderer } = window.require('electron');
 
@@ -102,10 +101,8 @@ const ESTADO_COLOR = {
   completo: { bg: '#E8F5E9', color: '#2E7D32' },
 };
 
-export default function Servicios({ rol }) {
+export default function Servicios({ rol, servicios = [], presupuestosTodos = [], cargando = false }) {
   const esAdmin = rol === 'admin';
-  const { datos: servicios, cargando } = useColeccion('servicios');
-  const { datos: presupuestosTodos } = useColeccion('presupuestos');
   const [busquedaTabla, setBusquedaTabla] = useState('');
   const [vista, setVista] = useState('tabla');
   const [verPapelera, setVerPapelera] = useState(false);
@@ -351,12 +348,18 @@ export default function Servicios({ rol }) {
 
   const ESTADO_LABEL = Object.fromEntries(OPCIONES_ESTADO.map((o) => [o.key, o.label]));
 
-const serviciosActivos = servicios.filter((s) => s.estado !== 'suspendido' && s.estado !== 'eliminado');
-const serviciosPapelera = servicios.filter((s) => s.estado === 'suspendido');
+const serviciosActivos = useMemo(
+  () => servicios.filter((s) => s.estado !== 'suspendido' && s.estado !== 'eliminado'),
+  [servicios]
+);
+const serviciosPapelera = useMemo(
+  () => servicios.filter((s) => s.estado === 'suspendido'),
+  [servicios]
+);
 
 const listaBase = verPapelera ? serviciosPapelera : serviciosActivos;
 
-const filtrados = listaBase
+const filtrados = useMemo(() => listaBase
   .filter((s) =>
     (s.contacto || '').toLowerCase().includes(busquedaTabla.toLowerCase()) ||
     (s.nropresupuesto || '').toString().includes(busquedaTabla)
@@ -366,7 +369,7 @@ const filtrados = listaBase
     if (!orden.campo) return 0;
     const resultado = COMPARADORES[orden.campo](a, b);
     return orden.asc ? resultado : -resultado;
-  });
+  }), [listaBase, busquedaTabla, filtroEstado, verPapelera, orden]);
 
   // ── Selección múltiple en la papelera ──
   const toggleSeleccionarTodo = (e, items) => {
@@ -410,9 +413,9 @@ const filtrados = listaBase
     if (!confirmar) return;
 
     try {
-      for (const id of seleccionados) {
-        await deleteDoc(doc(db, 'servicios', id));
-      }
+      const batch = writeBatch(db);
+      seleccionados.forEach((id) => batch.delete(doc(db, 'servicios', id)));
+      await batch.commit();
       setSeleccionados([]);
       alert('Servicios eliminados correctamente de la base de datos.');
     } catch (error) {

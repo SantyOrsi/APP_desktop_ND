@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { useColeccion } from './hooks/useFirestore';
+import React, { useState, useMemo } from 'react';
 import { db } from './constants/firebase';
 import { updateDoc, doc, Timestamp } from 'firebase/firestore';
 import { FLOTA } from './constants/flota';
@@ -45,9 +44,11 @@ const resultadoItem = (texto, onClick) => (
   </div>
 );
 
-export default function Logistica() {
-  const { datos: servicios, cargando } = useColeccion('servicios');
-  const { datos: presupuestosTodos } = useColeccion('presupuestos');
+export default function Logistica({ serviciosTodos = [], presupuestosTodos = [], cargando = false }) {
+  const servicios = useMemo(
+    () => serviciosTodos.filter((s) => (s.estado || '') !== 'suspendido' && (s.estado || '') !== 'eliminado'),
+    [serviciosTodos]
+  );
   const [busquedaTabla, setBusquedaTabla] = useState('');
   const [vista, setVista] = useState('tabla');
 
@@ -148,8 +149,11 @@ export default function Logistica() {
   const [filtroEstado, setFiltroEstado] = useState(null);
   const [modoVista, setModoVista] = useState('pendientes');
 
-  const presuPorNro = {};
-  presupuestosTodos.forEach((p) => { presuPorNro[String(p.nroPresupuesto)] = p; });
+  const presuPorNro = useMemo(() => {
+    const mapa = {};
+    presupuestosTodos.forEach((p) => { mapa[String(p.nroPresupuesto)] = p; });
+    return mapa;
+  }, [presupuestosTodos]);
 
   const presuActivo = servicioActivo ? presuPorNro[servicioActivo.nropresupuesto] : null;
 
@@ -182,7 +186,7 @@ export default function Logistica() {
     nro: (a, b) => (Number(a.nropresupuesto) || 0) - (Number(b.nropresupuesto) || 0),
   };
 
-  const filtrados = servicios
+  const filtrados = useMemo(() => servicios
     .filter((s) => (s.contacto || '').toLowerCase().includes(busquedaTabla.toLowerCase()) || (s.nropresupuesto || '').toString().includes(busquedaTabla))
     .filter((s) => !filtroEstado || s.estado === filtroEstado)
     .filter((s) => modoVista === 'todos' || !tieneTraficoHecho(s))
@@ -190,7 +194,7 @@ export default function Logistica() {
       if (!orden.campo) return 0;
       const r = COMPARADORES[orden.campo](a, b);
       return orden.asc ? r : -r;
-    });
+    }), [servicios, busquedaTabla, filtroEstado, modoVista, orden, presuPorNro]);
 
   if (vista === 'form') return (
     <div style={{ padding: 24, overflowY: 'auto', height: '100%' }}>

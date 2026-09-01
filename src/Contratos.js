@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
-import { useColeccion } from './hooks/useFirestore';
+import React, { useState, useMemo } from 'react';
 import { db } from './constants/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, Timestamp, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { generarContratoPDF } from './helpers/generarContratoPDF';
 const { ipcRenderer } = window.require('electron');
 
@@ -78,10 +77,8 @@ const resultadoItem = (texto, onClick) => (
   </div>
 );
 
-export default function Contratos({ rol }) {
+export default function Contratos({ rol, contratos = [], presupuestosTodos = [], cargando = false }) {
   const esAdmin = rol === 'admin';
-  const { datos: contratos, cargando } = useColeccion('contratos');
-  const { datos: presupuestosTodos } = useColeccion('presupuestos');
   const [busquedaTabla, setBusquedaTabla] = useState('');
   const [vista, setVista] = useState('tabla');
   const [verPapelera, setVerPapelera] = useState(false);
@@ -371,9 +368,11 @@ export default function Contratos({ rol }) {
     if (!confirmar) return;
 
     try {
+      const batch = writeBatch(db);
+
       for (const id of seleccionados) {
         const contrato = contratos.find((c) => c.id === id);
-        await deleteDoc(doc(db, 'contratos', id));
+        batch.delete(doc(db, 'contratos', id));
 
         if (contrato?.nroPresupuesto) {
           const qServicios = query(
@@ -381,12 +380,13 @@ export default function Contratos({ rol }) {
             where('nropresupuesto', '==', String(contrato.nroPresupuesto).trim())
           );
           const snapServicios = await getDocs(qServicios);
-          const borrados = snapServicios.docs
+          snapServicios.docs
             .filter((d) => (d.data().estado || '') === 'suspendido')
-            .map((d) => deleteDoc(doc(db, 'servicios', d.id)));
-          await Promise.all(borrados);
+            .forEach((d) => batch.delete(doc(db, 'servicios', d.id)));
         }
       }
+
+      await batch.commit();
       setSeleccionados([]);
       alert('Contratos eliminados correctamente de la base de datos.');
     } catch (error) {
@@ -396,6 +396,8 @@ export default function Contratos({ rol }) {
 
   // Mueve a la papelera los servicios vinculados a un contrato recién suspendido,
   // guardando el estado que tenían para poder restaurarlos después.
+  // Un solo writeBatch: aunque haya varios servicios, se confirma como
+  // UNA sola operación (un solo evento para quien escucha la colección).
   const moverServiciosAPapelera = async (nroPresupuesto) => {
     if (!nroPresupuesto) return;
     try {
@@ -404,16 +406,18 @@ export default function Contratos({ rol }) {
         where('nropresupuesto', '==', String(nroPresupuesto).trim())
       );
       const snapServicios = await getDocs(qServicios);
-      const promesas = snapServicios.docs
-        .filter((docServicio) => (docServicio.data().estado || '') !== 'suspendido')
-        .map((docServicio) =>
-          updateDoc(doc(db, 'servicios', docServicio.id), {
-            estado: 'suspendido',
-            estadoPrevio: docServicio.data().estado || 'pendiente',
-            eliminadoEn: Timestamp.now(),
-          })
-        );
-      await Promise.all(promesas);
+      const aMover = snapServicios.docs.filter((d) => (d.data().estado || '') !== 'suspendido');
+      if (aMover.length === 0) return;
+
+      const batch = writeBatch(db);
+      aMover.forEach((docServicio) => {
+        batch.update(doc(db, 'servicios', docServicio.id), {
+          estado: 'suspendido',
+          estadoPrevio: docServicio.data().estado || 'pendiente',
+          eliminadoEn: Timestamp.now(),
+        });
+      });
+      await batch.commit();
     } catch (error) {
       console.error('Error al mover servicios a la papelera:', error);
     }
@@ -429,16 +433,18 @@ export default function Contratos({ rol }) {
         where('nropresupuesto', '==', String(nroPresupuesto).trim())
       );
       const snapServicios = await getDocs(qServicios);
-      const promesas = snapServicios.docs
-        .filter((docServicio) => (docServicio.data().estado || '') === 'suspendido')
-        .map((docServicio) =>
-          updateDoc(doc(db, 'servicios', docServicio.id), {
-            estado: docServicio.data().estadoPrevio || 'pendiente',
-            estadoPrevio: '',
-            eliminadoEn: null,
-          })
-        );
-      await Promise.all(promesas);
+      const aRestaurar = snapServicios.docs.filter((d) => (d.data().estado || '') === 'suspendido');
+      if (aRestaurar.length === 0) return;
+
+      const batch = writeBatch(db);
+      aRestaurar.forEach((docServicio) => {
+        batch.update(doc(db, 'servicios', docServicio.id), {
+          estado: docServicio.data().estadoPrevio || 'pendiente',
+          estadoPrevio: '',
+          eliminadoEn: null,
+        });
+      });
+      await batch.commit();
     } catch (error) {
       console.error('Error al restaurar servicios:', error);
     }
@@ -500,13 +506,13 @@ export default function Contratos({ rol }) {
     metodoPago: (a, b) => (a.metodoPago || '').localeCompare(b.metodoPago || '', 'es', { sensitivity: 'base' }),
   };
 
-  const listaBase = contratos.filter((c) =>
+  const listaBase = useMemo(() => contratos.filter((c) =>
     verPapelera
       ? (c.estado || '') === 'Suspendido'
       : (c.estado || '') !== 'Suspendido'
-  );
+  ), [contratos, verPapelera]);
 
-  const filtrados = listaBase
+  const filtrados = useMemo(() => listaBase
     .filter((c) =>
       (c.clienteNombre || '').toLowerCase().includes(busquedaTabla.toLowerCase()) ||
       (c.nroPresupuesto || '').toString().includes(busquedaTabla)
@@ -516,7 +522,7 @@ export default function Contratos({ rol }) {
       if (!orden.campo) return 0;
       const resultado = COMPARADORES[orden.campo](a, b);
       return orden.asc ? resultado : -resultado;
-    });
+    }), [listaBase, busquedaTabla, filtroEstado, orden]);
 
   // ── FORMULARIO ──
   if (vista === 'form') return (

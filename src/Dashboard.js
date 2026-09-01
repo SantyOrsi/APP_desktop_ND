@@ -986,7 +986,12 @@ export default function Dashboard({
 
       if (seccion === 'presupuestos') {
 
-        return <Presupuestos />;
+        return (
+          <Presupuestos
+            presupuestos={presupuestos}
+            cargando={cargandoPresupuestos}
+          />
+        );
 
       }
 
@@ -996,7 +1001,14 @@ export default function Dashboard({
 
       if (seccion === 'contratos') {
 
-        return <Contratos rol={rol} />;
+        return (
+          <Contratos
+            rol={rol}
+            contratos={contratosTodos}
+            presupuestosTodos={presupuestos}
+            cargando={cargandoContratos}
+          />
+        );
 
       }
 
@@ -1006,13 +1018,26 @@ export default function Dashboard({
 
       if (seccion === 'servicios') {
 
-        return <Servicios rol={rol} />;
+        return (
+          <Servicios
+            rol={rol}
+            servicios={serviciosTodos}
+            presupuestosTodos={presupuestos}
+            cargando={cargandoServicios}
+          />
+        );
 
       }
 
       if (seccion === 'logistica') {
 
-        return <Logistica />;
+        return (
+          <Logistica
+            serviciosTodos={serviciosTodos}
+            presupuestosTodos={presupuestos}
+            cargando={cargandoServicios}
+          />
+        );
 
       }
 

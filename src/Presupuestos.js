@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { useColeccion } from './hooks/useFirestore';
+import React, { useState, useMemo } from 'react';
 import { db } from './constants/firebase';
 import { collection, addDoc, updateDoc, doc, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import { generarPresupuestoPDF } from './helpers/generarPresupuestoPDF';
@@ -107,8 +106,7 @@ const resultadoItem = (texto, onClick) => (
   </div>
 );
 
-export default function Presupuestos() {
-  const { datos: presupuestos, cargando } = useColeccion('presupuestos');
+export default function Presupuestos({ presupuestos = [], cargando = false }) {
   const [busqueda, setBusqueda] = useState('');
   const [vista, setVista] = useState('tabla');
   const [form, setForm] = useState(FORM_VACIO);
@@ -122,7 +120,10 @@ export default function Presupuestos() {
   const [resultadosNro, setResultadosNro] = useState([]);
 
   // ── Navegación Primero/Anterior/Siguiente/Ultimo ──
-  const listaOrdenada = [...presupuestos].sort((a, b) => Number(a.nroPresupuesto) - Number(b.nroPresupuesto));
+  const listaOrdenada = useMemo(
+    () => [...presupuestos].sort((a, b) => Number(a.nroPresupuesto) - Number(b.nroPresupuesto)),
+    [presupuestos]
+  );
   const [indiceNav, setIndiceNav] = useState(-1);
 
   const CAMPOS_FECHA = ['fecha', 'vigencia', 'salidaFecha', 'retornoFecha'];
@@ -329,7 +330,7 @@ export default function Presupuestos() {
     costo: (a, b) => (Number(a.costoTotal) || 0) - (Number(b.costoTotal) || 0),
   };
 
-  const filtrados = presupuestos
+  const filtrados = useMemo(() => presupuestos
     .filter(p =>
       (p.cliente || '').toLowerCase().includes(busqueda.toLowerCase()) ||
       (p.nroPresupuesto || '').toString().includes(busqueda) ||
@@ -340,7 +341,7 @@ export default function Presupuestos() {
       if (!orden.campo) return 0;
       const resultado = COMPARADORES[orden.campo](a, b);
       return orden.asc ? resultado : -resultado;
-    });
+    }), [presupuestos, busqueda, orden]);
 
   // Opciones para los selects de SÍ/NO
   const opcionesSiNo = [

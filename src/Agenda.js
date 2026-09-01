@@ -9,7 +9,7 @@ const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', '
 const COLOR_ESTADO = { pendiente: '#F5C400', enRuta: '#1E88E5', completo: '#43A047' };
 const PRIORIDAD = ['pendiente', 'enRuta', 'completo'];
 const COLOR_EVENTO = '#8E24AA';
-const ESTADOS_MANUALES = ['cancelado'];
+const ESTADOS_MANUALES = ['cancelado', 'suspendido'];
 
 const COLUMNAS = [
   { key: 'contratante',      label: 'Contratante',              width: 130 },
@@ -167,7 +167,8 @@ export default function Agenda() {
       });
 
       if (huboCambios) await batch.commit();
-      setServicios(lista);
+      // Los servicios suspendidos (en la papelera) no se muestran en la agenda
+      setServicios(lista.filter((s) => s.estado !== 'suspendido'));
     } catch (error) {
       console.log('Error al cargar agenda:', error.message);
     }

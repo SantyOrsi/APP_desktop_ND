@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { db } from './constants/firebase';
 import { updateDoc, doc, Timestamp } from 'firebase/firestore';
 import { FLOTA } from './constants/flota';
+import { generarTraficoPDF } from './helpers/generarTraficoPDF';
+const { ipcRenderer } = window.require('electron');
 
 const ESTADO_LABEL = { pendiente: 'Pendiente', enRuta: 'En ruta', completo: 'Completo' };
 const ESTADO_COLOR = {
@@ -145,6 +147,46 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
     setGuardando(false);
   };
 
+  // Arma el servicio con los datos que están AHORA en pantalla (aunque
+  // todavía no se hayan guardado), para que el PDF siempre coincida con
+  // lo que se ve en el formulario.
+  const servicioParaPDF = () => {
+    const choferesLimpios = choferes.map((c) => c.trim()).filter(Boolean);
+    const unidadesTexto = [...unidadesSeleccionadas, otraUnidad.trim()].filter(Boolean);
+    return {
+      ...servicioActivo,
+      chofer: choferesLimpios,
+      unidad: unidadesTexto,
+      dineroViaje: dineroViaje.trim(),
+    };
+  };
+
+  const generarPDF = async () => {
+    try {
+      const pdfBytes = await generarTraficoPDF(servicioParaPDF(), presuActivo);
+      const result = await ipcRenderer.invoke('guardar-pdf', {
+        nombre: `Trafico_${servicioActivo?.nropresupuesto || 'nuevo'}.pdf`,
+        buffer: Array.from(pdfBytes),
+        tipo: 'trafico',
+      });
+      if (result.ok) alert(`PDF guardado en: ${result.ruta}`);
+      else if (result.error) alert('Error al generar PDF: ' + result.error);
+    } catch (error) {
+      alert('Error al generar PDF: ' + error.message);
+    }
+  };
+
+  const handleSoloPDF = () => {
+    if (bloqueado || !servicioActivo) { alert('Primero buscá y seleccioná un servicio'); return; }
+    generarPDF();
+  };
+
+  const handleGuardarPDF = async () => {
+    if (bloqueado || !servicioActivo) { alert('Primero buscá y seleccioná un servicio'); return; }
+    await guardar();
+    await generarPDF();
+  };
+
   const [orden, setOrden] = useState({ campo: 'salida', asc: false });
   const [filtroEstado, setFiltroEstado] = useState(null);
   const [modoVista, setModoVista] = useState('pendientes');
@@ -208,10 +250,20 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
             {servicioActivo ? `Tráfico — Presupuesto N° ${servicioActivo.nropresupuesto}` : 'Asignar chofer a servicio'}
           </div>
         </div>
-        <button onClick={guardar} disabled={guardando || bloqueado}
-          style={{ padding: '9px 20px', background: bloqueado ? '#F2F2F2' : '#1A1A1A', color: bloqueado ? '#AAA' : '#F5C400', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: bloqueado ? 'default' : 'pointer' }}>
-          {guardando ? 'Guardando...' : 'Guardar'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={handleSoloPDF} disabled={bloqueado}
+            style={{ padding: '9px 20px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: bloqueado ? 'default' : 'pointer', color: bloqueado ? '#AAA' : '#1A1A1A' }}>
+            Solo PDF
+          </button>
+          <button onClick={handleGuardarPDF} disabled={guardando || bloqueado}
+            style={{ padding: '9px 20px', background: bloqueado ? '#F2F2F2' : '#1A1A1A', color: bloqueado ? '#AAA' : '#F5C400', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: bloqueado ? 'default' : 'pointer' }}>
+            Guardar y PDF
+          </button>
+          <button onClick={guardar} disabled={guardando || bloqueado}
+            style={{ padding: '9px 20px', background: bloqueado ? '#F2F2F2' : '#1A1A1A', color: bloqueado ? '#AAA' : '#F5C400', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: bloqueado ? 'default' : 'pointer' }}>
+            {guardando ? 'Guardando...' : 'Guardar'}
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>

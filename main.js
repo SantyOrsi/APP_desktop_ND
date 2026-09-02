@@ -37,13 +37,15 @@ app.on('activate', () => {
 });
 
 // ── Guardar PDF (Rutas para Máquina Virtual en Disco D:) ──
-const CARPETA_PDFS_PRESUPUESTOS = 'D:/SISTEMAS/PRESUPUESTOS';
-const CARPETA_PDFS_CONTRATOS   = 'D:/SISTEMAS/CONTRATOS';
-const CARPETA_PDFS_SERVICIOS   = 'D:/SISTEMAS/SERVICIOS';
+const CARPETA_PDFS_PRESUPUESTOS = 'D:/Proyectos/Pdfs';
+const CARPETA_PDFS_CONTRATOS   = 'D:/Proyectos/Pdfs';
+const CARPETA_PDFS_SERVICIOS   = 'D:/Proyectos/Pdfs';
+const CARPETA_PDFS_TRAFICO     = 'D:/Proyectos/Pdfs';
 
 const carpetaSegunTipo = (tipo) => {
   if (tipo === 'contrato') return CARPETA_PDFS_CONTRATOS;
   if (tipo === 'servicio') return CARPETA_PDFS_SERVICIOS;
+  if (tipo === 'trafico') return CARPETA_PDFS_TRAFICO;
   return CARPETA_PDFS_PRESUPUESTOS;
 };
 

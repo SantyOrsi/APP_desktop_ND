@@ -43,6 +43,14 @@ const sel = (value, onChange, disabled) => (
   </select>
 );
 
+const selMoneda = (value, onChange) => (
+  <select value={value || 'ARS'} onChange={onChange} className="nd-input"
+    style={{ padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: '#F8F8F8', outline: 'none', width: '100%', color: '#1A1A1A', cursor: 'pointer' }}>
+    <option value="ARS">Pesos argentinos (ARS)</option>
+    <option value="USD">Dólares estadounidenses (USD)</option>
+  </select>
+);
+
 const lbl = (texto) => (
   <label style={{ fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5 }}>{texto}</label>
 );
@@ -101,6 +109,8 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
   const [nroPresupuesto, setNroPresupuesto] = useState('');
   const [clienteEncontrado, setClienteEncontrado] = useState('');
   const [costoTotal, setCostoTotal] = useState('0');
+  const [moneda, setMoneda] = useState('ARS');
+  const [cotizacionDolar, setCotizacionDolar] = useState('');
   const [presupuestoVinculado, setPresupuestoVinculado] = useState(null);
 
   const [desbloqueado, setDesbloqueado] = useState(false);
@@ -151,6 +161,44 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
     }
   };
 
+  const obtenerCotizacionDolar = async () => {
+    const respuesta = await fetch('https://dolarapi.com/v1/dolares/oficial');
+    if (!respuesta.ok) throw new Error('No se pudo consultar la cotización del dólar');
+    const datos = await respuesta.json();
+    if (!datos.venta) throw new Error('La cotización del dólar no está disponible');
+    return Number(datos.venta);
+  };
+
+  const cambiarMoneda = async (e) => {
+    const nuevaMoneda = e.target.value;
+    if (nuevaMoneda === moneda) return;
+
+    let cotizacion = Number(cotizacionDolar);
+    if (nuevaMoneda === 'USD') {
+      try {
+        cotizacion = await obtenerCotizacionDolar();
+      } catch (error) {
+        alert(error.message);
+        return;
+      }
+    }
+
+    const total = Number(costoTotal);
+    const convertir = Number.isFinite(total) && total > 0 && cotizacion > 0;
+    const totalConvertido = convertir
+      ? (moneda === 'ARS' && nuevaMoneda === 'USD' ? total / cotizacion : total * cotizacion).toFixed(2)
+      : costoTotal;
+
+    setMoneda(nuevaMoneda);
+    setCotizacionDolar(cotizacion ? cotizacion.toFixed(2) : '');
+    setCostoTotal(totalConvertido);
+    setForm((prev) => ({
+      ...prev,
+      senia: convertir ? (Number(prev.senia || 0) / (moneda === 'ARS' && nuevaMoneda === 'USD' ? cotizacion : 1 / cotizacion)).toFixed(2) : prev.senia,
+      saldo: convertir ? (Number(prev.saldo || 0) / (moneda === 'ARS' && nuevaMoneda === 'USD' ? cotizacion : 1 / cotizacion)).toFixed(2) : prev.saldo,
+    }));
+  };
+
   const elegirSugerenciaCliente = (c) => {
     setForm((prev) => ({
       ...prev,
@@ -177,6 +225,8 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
     setNroPresupuesto(item.nroPresupuesto || '');
     setClienteEncontrado(item.cliente || '');
     setCostoTotal(item.costoTotal || '0');
+    setMoneda(item.moneda || 'ARS');
+    setCotizacionDolar(item.cotizacionDolar || '');
     setPresupuestoVinculado(item);
     limpiarResultados();
 
@@ -255,6 +305,8 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
     setFecha(item.fechaPresupuesto || '');
     setDestino(item.destino || '');
     setCostoTotal(item.costoTotal || '0');
+    setMoneda(item.moneda || 'ARS');
+    setCotizacionDolar(item.cotizacionDolar || '');
     setBusquedaCliente(item.cliente || item.clienteNombre || '');
     setBusquedaNro(item.nroPresupuesto || '');
     setPresupuestoVinculado(null);
@@ -278,6 +330,8 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
     setBusquedaCliente('');
     setBusquedaNro('');
     setCostoTotal('0');
+    setMoneda('ARS');
+    setCotizacionDolar('');
     setPresupuestoVinculado(null);
     setDesbloqueado(false);
     limpiarResultados();
@@ -301,6 +355,8 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
         fechaPresupuesto: fecha,
         destino,
         costoTotal,
+        moneda,
+        cotizacionDolar,
         ...form,
         actualizadoEn: Timestamp.now(),
       };
@@ -635,8 +691,10 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
 
         <Seccion titulo="Pago">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 22 }}>
-            {campo('Seña', inp(form.senia, set('senia'), '', 'text', bloqueado))}
-            {campo('Saldo', inp(form.saldo, () => {}, '', 'text', true))}
+            {campo('Moneda', selMoneda(moneda, cambiarMoneda))}
+            {campo('Cotización dólar hoy', inp(cotizacionDolar, () => {}, 'Se actualiza automáticamente', 'text', true))}
+            {campo(`Seña (${moneda})`, inp(form.senia, set('senia'), '', 'text', bloqueado))}
+            {campo(`Saldo (${moneda})`, inp(form.saldo, () => {}, '', 'text', true))}
             {campo('Estado', sel(form.estado, set('estado'), bloqueado))}
             {campo('Metodo de Pago', inp(form.metodoPago, set('metodoPago'), 'Ej: Efectivo, Transferencia', 'text', bloqueado))}
             {campo('Fecha Cancelación', inp(form.fechaCancelacion, set('fechaCancelacion'), 'DD/MM/AAAA', 'text', bloqueado))}

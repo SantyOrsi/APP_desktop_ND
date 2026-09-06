@@ -9,7 +9,9 @@ const NEGRO = rgb(0.1, 0.1, 0.1);
 const FONT_SIZE = 12; // un poco más grande que antes (era 10)
 
 const valorODefault = (valor, porDefecto = '') => (valor && String(valor).trim() !== '' ? valor : porDefecto);
-const monto = (valor) => (valor && Number(valor) > 0 ? `$${Number(valor).toLocaleString('es-AR')}` : '');
+const monto = (valor, moneda = 'ARS') => (valor && Number(valor) > 0
+  ? `${moneda === 'USD' ? 'US$' : '$'}${Number(valor).toLocaleString('es-AR')}`
+  : '');
 
 // pdf-lib mide "y" desde ABAJO. Restamos un 80% de la fuente (no el 100%)
 // para que la letra no quede pegada más abajo de la línea al agrandarla.
@@ -71,8 +73,8 @@ export const generarPresupuestoPDF = async (form) => {
   filaTabla(57.52, 24.73, 66.99, form.adicionales === 'SI', form.adicionalesDetalle);
   filaTabla(59.90, 38.68, 67.9, !!form.alojViaticosCargo || Number(form.importAlojViaticos) > 0, form.importAlojViaticos, true);
 
-  escribir(63.12, 67.9, monto(form.costoTotal) || '$0');
-  escribir(65.87, 67.9, monto(form.costoIva) || '$0');
+  escribir(63.12, 67.9, monto(form.costoTotal, form.moneda) || '$0');
+  escribir(65.87, 67.9, monto(form.costoIva, form.moneda) || '$0');
 
   // ── Detalle de movimientos (cuadro grande, con salto de línea) ──
   const detalleTexto = form.movimiento === 'SI'

@@ -33,12 +33,18 @@ const formatearHora = (texto) => {
   return limpio;
 };
 
+const formatearImporte = (texto) => {
+  const limpio = String(texto || '').replace(',', '.').replace(/[^0-9.]/g, '');
+  const partes = limpio.split('.');
+  return partes.length > 2 ? `${partes[0]}.${partes.slice(1).join('')}` : limpio;
+};
+
 const FORM_VACIO = {
   nroPresupuesto: '', cliente: '', fecha: hoy(), vigencia: hoyMasDias(30),
   origen: '', destino: '', kmRecorrer: '', salidaFecha: hoy(), salidaHora: '',
   retornoFecha: '', retornoHora: '', movimiento: 'NO', movimientoDetalle: '',
   adicionales: 'NO', adicionalesDetalle: '', infoAdicional: 'NO', infoAdicionalDetalle: '', alojViaticosCargo: '',
-  importAlojViaticos: '', capacidad: '', tipoTransporte: '', costoTotal: '', costoIva: '', estado: 'pendiente',
+  importAlojViaticos: '', capacidad: '', tipoTransporte: '', moneda: 'ARS', cotizacionDolar: '', costoTotal: '', costoIva: '', estado: 'pendiente',
 };
 
 const inp = (value, onChange, placeholder = '', type = 'text', readOnly = false) => (
@@ -128,7 +134,8 @@ export default function Presupuestos({ presupuestos = [], cargando = false }) {
 
   const CAMPOS_FECHA = ['fecha', 'vigencia', 'salidaFecha', 'retornoFecha'];
   const CAMPOS_HORA = ['salidaHora', 'retornoHora'];
-  const CAMPOS_NUMERICOS = ['nroPresupuesto', 'kmRecorrer', 'capacidad', 'importAlojViaticos', 'costoTotal'];
+  const CAMPOS_NUMERICOS = ['nroPresupuesto', 'kmRecorrer', 'capacidad'];
+  const CAMPOS_IMPORTE = ['importAlojViaticos', 'cotizacionDolar', 'costoTotal', 'costoIva'];
 
   // Función para obtener el próximo número de presupuesto (autoincremental arrancando en 1)
   const obtenerProximoNro = () => {
@@ -152,6 +159,7 @@ export default function Presupuestos({ presupuestos = [], cargando = false }) {
     if (CAMPOS_FECHA.includes(key)) val = formatearFecha(val);
     else if (CAMPOS_HORA.includes(key)) val = formatearHora(val);
     else if (CAMPOS_NUMERICOS.includes(key)) val = soloNumeros(val);
+    else if (CAMPOS_IMPORTE.includes(key)) val = formatearImporte(val);
     setForm(prev => {
       const updated = { ...prev, [key]: val };
       if (key === 'fecha') {
@@ -165,8 +173,45 @@ export default function Presupuestos({ presupuestos = [], cargando = false }) {
     });
   };
 
+  const obtenerCotizacionDolar = async () => {
+    const respuesta = await fetch('https://dolarapi.com/v1/dolares/oficial');
+    if (!respuesta.ok) throw new Error('No se pudo consultar la cotización del dólar');
+    const datos = await respuesta.json();
+    if (!datos.venta) throw new Error('La cotización del dólar no está disponible');
+    return Number(datos.venta);
+  };
+
+  const cambiarMoneda = async (e) => {
+    const nuevaMoneda = e.target.value;
+    if (nuevaMoneda === form.moneda) return;
+
+    let cotizacion = Number(form.cotizacionDolar);
+    if (nuevaMoneda === 'USD') {
+      try {
+        cotizacion = await obtenerCotizacionDolar();
+      } catch (error) {
+        alert(error.message);
+        return;
+      }
+    }
+
+    const total = Number(form.costoTotal);
+    const convertir = Number.isFinite(total) && total > 0 && cotizacion > 0;
+    const totalConvertido = convertir
+      ? (form.moneda === 'ARS' && nuevaMoneda === 'USD' ? total / cotizacion : total * cotizacion).toFixed(2)
+      : form.costoTotal;
+
+    setForm((prev) => ({
+      ...prev,
+      moneda: nuevaMoneda,
+      cotizacionDolar: cotizacion ? cotizacion.toFixed(2) : prev.cotizacionDolar,
+      costoTotal: totalConvertido,
+      costoIva: convertir ? (Number(totalConvertido) * 1.105).toFixed(2) : prev.costoIva,
+    }));
+  };
+
   const seleccionar = (item, idx = null) => {
-    setForm(item);
+    setForm({ ...FORM_VACIO, ...item, moneda: item.moneda || 'ARS' });
     setDocId(item.id);
     setIndiceNav(idx !== null ? idx : listaOrdenada.findIndex((p) => p.id === item.id));
     setResultadosCliente([]);
@@ -482,8 +527,13 @@ export default function Presupuestos({ presupuestos = [], cargando = false }) {
         {/* COSTOS */}
         <Seccion titulo="Costos">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 22 }}>
-            {campo('Costo Total', inp(form.costoTotal, set('costoTotal')))}
-            {campo('Costo + IVA (10.5%)', inp(form.costoIva, () => {}, '', 'text', true))}
+            {campo('Moneda', sel(form.moneda, cambiarMoneda, [
+              { label: 'Pesos argentinos (ARS)', value: 'ARS' },
+              { label: 'Dólares estadounidenses (USD)', value: 'USD' },
+            ]))}
+            {campo('Cotización dólar hoy', inp(form.cotizacionDolar, () => {}, 'Se actualiza automáticamente', 'text', true))}
+            {campo(`Costo Total (${form.moneda})`, inp(form.costoTotal, set('costoTotal')))}
+            {campo(`Costo + IVA (10.5%) (${form.moneda})`, inp(form.costoIva, set('costoIva')))}
           </div>
         </Seccion>
 
@@ -551,7 +601,7 @@ export default function Presupuestos({ presupuestos = [], cargando = false }) {
                   <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.cliente || '-'}</td>
                   <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.origen && row.destino ? `${row.origen} → ${row.destino}` : '-'}</td>
                   <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.salidaFecha || '-'} {row.salidaHora || ''}</td>
-                  <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.costoTotal ? `$${row.costoTotal}` : '-'}</td>
+                  <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>{row.costoTotal ? `${row.moneda === 'USD' ? 'US$' : '$'}${row.costoTotal}` : '-'}</td>
                   <td style={{ padding: '12px 20px', borderBottom: '0.5px solid #F8F8F8' }}>
                     <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: '#FFF8E1', color: '#F57F17' }}>
                       {row.estado || 'Pendiente'}

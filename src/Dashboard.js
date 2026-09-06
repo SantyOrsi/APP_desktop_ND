@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 
 import { auth } from './constants/firebase';
 
@@ -180,7 +180,8 @@ function RelojInfo() {
     'es-AR',
     {
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: false
     }
   );
 
@@ -343,7 +344,10 @@ export default function Dashboard({
     datos: serviciosTodos,
     cargando: cargandoServicios
   } = useColeccion('servicios');
-  const servicios = serviciosTodos.filter(s => (s.estado || '') !== 'suspendido' && (s.estado || '') !== 'eliminado');
+  const servicios = useMemo(
+    () => serviciosTodos.filter(s => (s.estado || '') !== 'suspendido' && (s.estado || '') !== 'eliminado'),
+    [serviciosTodos]
+  );
 
 
   const {
@@ -356,7 +360,10 @@ export default function Dashboard({
     datos: contratosTodos,
     cargando: cargandoContratos
   } = useColeccion('contratos');
-  const contratos = contratosTodos.filter(c => (c.estado || '') !== 'Suspendido');
+  const contratos = useMemo(
+    () => contratosTodos.filter(c => (c.estado || '') !== 'Suspendido'),
+    [contratosTodos]
+  );
 
 
   const datosMostrados =

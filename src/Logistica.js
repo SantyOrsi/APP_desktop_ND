@@ -69,6 +69,15 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
   const [categoriaAbierta, setCategoriaAbierta] = useState(null);
   const [dineroViaje, setDineroViaje] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const [aviso, setAviso] = useState(null); // { texto, tipo: 'ok' | 'error' }
+
+  // Reemplaza a alert(): un alert() nativo TRABA la ventana entera mientras
+  // espera que lo cierres (a veces ni se ve, queda detrás de la ventana,
+  // y por dentro sigue bloqueando igual). Esto no bloquea nada.
+  const avisar = (texto, tipo = 'ok') => {
+    setAviso({ texto, tipo });
+    setTimeout(() => setAviso(null), 4000);
+  };
 
   const bloqueado = chequeandoBusqueda && !servicioActivo;
 
@@ -128,7 +137,7 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
     fl.subUnidades ? fl.subUnidades.some((c) => unidadesSeleccionadas.includes(c)) : unidadesSeleccionadas.includes(fl.nombre);
 
   const guardar = async () => {
-    if (bloqueado || !servicioActivo) { alert('Primero buscá y seleccioná un servicio'); return; }
+    if (bloqueado || !servicioActivo) { avisar('Primero buscá y seleccioná un servicio', 'error'); return; }
     setGuardando(true);
     try {
       const choferesLimpios = choferes.map((c) => c.trim()).filter(Boolean);
@@ -139,10 +148,10 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
         dineroViaje: dineroViaje.trim(),
         actualizadoEn: Timestamp.now(),
       });
-      alert('Chofer y unidad asignados correctamente');
+      avisar('Chofer y unidad asignados correctamente', 'ok');
       setVista('tabla');
     } catch (error) {
-      alert('Error al guardar: ' + error.message);
+      avisar('Error al guardar: ' + error.message, 'error');
     }
     setGuardando(false);
   };
@@ -169,20 +178,15 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
         buffer: Array.from(pdfBytes),
         tipo: 'trafico',
       });
-      if (result.ok) alert(`PDF guardado en: ${result.ruta}`);
-      else if (result.error) alert('Error al generar PDF: ' + result.error);
+      if (result.ok) avisar(`PDF guardado en: ${result.ruta}`, 'ok');
+      else if (result.error) avisar('Error al generar PDF: ' + result.error, 'error');
     } catch (error) {
-      alert('Error al generar PDF: ' + error.message);
+      avisar('Error al generar PDF: ' + error.message, 'error');
     }
   };
 
-  const handleSoloPDF = () => {
-    if (bloqueado || !servicioActivo) { alert('Primero buscá y seleccioná un servicio'); return; }
-    generarPDF();
-  };
-
   const handleGuardarPDF = async () => {
-    if (bloqueado || !servicioActivo) { alert('Primero buscá y seleccioná un servicio'); return; }
+    if (bloqueado || !servicioActivo) { avisar('Primero buscá y seleccioná un servicio', 'error'); return; }
     await guardar();
     await generarPDF();
   };
@@ -238,8 +242,21 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
       return orden.asc ? r : -r;
     }), [servicios, busquedaTabla, filtroEstado, modoVista, orden, presuPorNro]);
 
+  const Aviso = aviso && (
+    <div style={{
+      position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 200,
+      background: aviso.tipo === 'error' ? '#C62828' : '#1A1A1A',
+      color: aviso.tipo === 'error' ? '#fff' : '#F5C400',
+      padding: '12px 22px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+      boxShadow: '0 4px 16px rgba(0,0,0,0.25)', maxWidth: '80%', textAlign: 'center',
+    }}>
+      {aviso.texto}
+    </div>
+  );
+
   if (vista === 'form') return (
     <div style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
+      {Aviso}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button onClick={() => setVista('tabla')}
@@ -251,17 +268,9 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={handleSoloPDF} disabled={bloqueado}
-            style={{ padding: '9px 20px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: bloqueado ? 'default' : 'pointer', color: bloqueado ? '#AAA' : '#1A1A1A' }}>
-            Solo PDF
-          </button>
           <button onClick={handleGuardarPDF} disabled={guardando || bloqueado}
             style={{ padding: '9px 20px', background: bloqueado ? '#F2F2F2' : '#1A1A1A', color: bloqueado ? '#AAA' : '#F5C400', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: bloqueado ? 'default' : 'pointer' }}>
-            Guardar y PDF
-          </button>
-          <button onClick={guardar} disabled={guardando || bloqueado}
-            style={{ padding: '9px 20px', background: bloqueado ? '#F2F2F2' : '#1A1A1A', color: bloqueado ? '#AAA' : '#F5C400', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: bloqueado ? 'default' : 'pointer' }}>
-            {guardando ? 'Guardando...' : 'Guardar'}
+            {guardando ? 'Guardando...' : 'Guardar y PDF'}
           </button>
         </div>
       </div>
@@ -445,6 +454,7 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
 
   return (
     <div style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
+      {Aviso}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <div style={{ fontSize: 18, fontWeight: 700, color: '#1A1A1A' }}>Trafico</div>
         <button onClick={nuevo}

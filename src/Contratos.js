@@ -93,6 +93,14 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
   const [form, setForm] = useState(FORM_VACIO);
   const [docId, setDocId] = useState(null);
   const [guardando, setGuardando] = useState(false);
+  const [aviso, setAviso] = useState(null); // { texto, tipo: 'ok' | 'error' }
+
+  // Reemplaza a alert(): un alert() nativo TRABA la ventana entera mientras
+  // espera que lo cierres. Esto no bloquea nada, se esconde solo.
+  const avisar = (texto, tipo = 'ok') => {
+    setAviso({ texto, tipo });
+    setTimeout(() => setAviso(null), 4000);
+  };
 
   // ── Selección múltiple para eliminar ──
   const [seleccionados, setSeleccionados] = useState([]);
@@ -178,7 +186,7 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
       try {
         cotizacion = await obtenerCotizacionDolar();
       } catch (error) {
-        alert(error.message);
+        avisar(error.message, 'error');
         return;
       }
     }
@@ -244,7 +252,7 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
         setDesbloqueado(false);
       }
     } catch (error) {
-      alert('Error al buscar contrato: ' + error.message);
+      avisar('Error al buscar contrato: ' + error.message, 'error');
     }
   };
 
@@ -283,7 +291,7 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
 
   const handleAltaContrato = () => {
     if (!clienteEncontrado) {
-      alert('Primero buscá y seleccioná un presupuesto');
+      avisar('Primero buscá y seleccioná un presupuesto', 'error');
       return;
     }
     setForm((prev) => ({
@@ -339,11 +347,11 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
   };
 
   const guardar = async () => {
-    if (bloqueado) { alert('Primero buscá un presupuesto y presioná ALTA CONTRATO'); return; }
-    if (!nroPresupuesto.trim()) { alert('Primero buscá y seleccioná un presupuesto'); return; }
+    if (bloqueado) { avisar('Primero buscá un presupuesto y presioná ALTA CONTRATO', 'error'); return; }
+    if (!nroPresupuesto.trim()) { avisar('Primero buscá y seleccioná un presupuesto', 'error'); return; }
     for (const c of CAMPOS_FECHA) {
       if (form[c] && !fechaCompleta(form[c])) {
-        alert(`La fecha "${c}" está incompleta. Usá el formato DD/MM/AAAA.`);
+        avisar(`La fecha "${c}" está incompleta. Usá el formato DD/MM/AAAA.`, 'error');
         return;
       }
     }
@@ -382,7 +390,7 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
         await restaurarServiciosDelContrato(nroPresupuesto);
       }
     } catch (error) {
-      alert('Error al guardar: ' + error.message);
+      avisar('Error al guardar: ' + error.message, 'error');
     }
     setGuardando(false);
   };
@@ -413,7 +421,7 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
 
   const eliminarDefinitivamente = async () => {
     if (!esAdmin) {
-      alert('Solo un administrador puede eliminar contratos de la base de datos.');
+      avisar('Solo un administrador puede eliminar contratos de la base de datos.', 'error');
       return;
     }
     if (seleccionados.length === 0) return;
@@ -444,9 +452,9 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
 
       await batch.commit();
       setSeleccionados([]);
-      alert('Contratos eliminados correctamente de la base de datos.');
+      avisar('Contratos eliminados correctamente de la base de datos.', 'ok');
     } catch (error) {
-      alert('Error al eliminar contratos: ' + error.message);
+      avisar('Error al eliminar contratos: ' + error.message, 'error');
     }
   };
 
@@ -506,10 +514,6 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
     }
   };
 
-  const copiar = () => {
-    navigator.clipboard?.writeText(JSON.stringify(form, null, 2));
-  };
-
   const generarPDF = async () => {
     try {
       let presu = presupuestoVinculado;
@@ -527,10 +531,10 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
         buffer: Array.from(pdfBytes),
         tipo: 'contrato',
       });
-      if (result.ok) alert(`PDF guardado en: ${result.ruta}`);
-      else if (result.error) alert('Error al generar PDF: ' + result.error);
+      if (result.ok) avisar(`PDF guardado en: ${result.ruta}`, 'ok');
+      else if (result.error) avisar('Error al generar PDF: ' + result.error, 'error');
     } catch (error) {
-      alert('Error al generar PDF: ' + error.message);
+      avisar('Error al generar PDF: ' + error.message, 'error');
     }
   };
   const handleGuardarPDF = async () => { await guardar(); await generarPDF(); };
@@ -539,7 +543,7 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
     if (!busquedaTabla.trim()) return;
     const encontrado = contratos.find((c) => String(c.nroPresupuesto) === busquedaTabla.trim());
     if (encontrado) { seleccionarContrato(encontrado); setVista('form'); }
-    else alert('No se encontró ningún contrato con ese número');
+    else avisar('No se encontró ningún contrato con ese número', 'error');
   };
 
   const [orden, setOrden] = useState({ campo: null, asc: true });
@@ -581,8 +585,21 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
     }), [listaBase, busquedaTabla, filtroEstado, orden]);
 
   // ── FORMULARIO ──
+  const Aviso = aviso && (
+    <div style={{
+      position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 200,
+      background: aviso.tipo === 'error' ? '#C62828' : '#1A1A1A',
+      color: aviso.tipo === 'error' ? '#fff' : '#F5C400',
+      padding: '12px 22px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+      boxShadow: '0 4px 16px rgba(0,0,0,0.25)', maxWidth: '80%', textAlign: 'center',
+    }}>
+      {aviso.texto}
+    </div>
+  );
+
   if (vista === 'form') return (
     <div style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
+      {Aviso}
       <style>{`.nd-input:focus { background: #FFF3C4 !important; border-color: #F5C400 !important; }`}</style>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -601,21 +618,9 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
               Restablecer a {form.estadoPrevio || 'Señado'}
             </button>
           )}
-          <button onClick={copiar}
-            style={{ padding: '9px 20px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-            Copiar
-          </button>
-          <button onClick={guardar} disabled={guardando}
-            style={{ padding: '9px 20px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-            {guardando ? 'Guardando...' : 'Guardar'}
-          </button>
-          <button onClick={generarPDF}
-            style={{ padding: '9px 20px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-            Solo PDF
-          </button>
           <button onClick={handleGuardarPDF} disabled={guardando}
             style={{ padding: '9px 20px', background: '#1A1A1A', color: '#F5C400', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-            Guardar y PDF
+            {guardando ? 'Guardando...' : 'Guardar y PDF'}
           </button>
         </div>
       </div>
@@ -707,6 +712,7 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
   // ── TABLA ──
   return (
     <div style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
+      {Aviso}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         
         {/* Pestañas Activos / Papelera */}

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { db } from './constants/firebase';
 import { collection, addDoc, updateDoc, doc, Timestamp, query, where, getDocs } from 'firebase/firestore';
-import { generarPresupuestoPDF } from './helpers/generarPresupuestoPDF';
+
 
 const hoy = () => {
   const d = new Date();
@@ -112,12 +112,23 @@ const resultadoItem = (texto, onClick) => (
   </div>
 );
 
-export default function Presupuestos({ presupuestos = [], cargando = false }) {
+function Presupuestos({ presupuestos = [], cargando = false }) {
   const [busqueda, setBusqueda] = useState('');
   const [vista, setVista] = useState('tabla');
   const [form, setForm] = useState(FORM_VACIO);
   const [docId, setDocId] = useState(null);
   const [guardando, setGuardando] = useState(false);
+  const [generandoPDF, setGenerandoPDF] = useState(false);
+  const [aviso, setAviso] = useState(null); // { texto, tipo: 'ok' | 'error' }
+
+  // Reemplaza a alert(): un alert() nativo TRABA la ventana entera (es
+  // bloqueante) mientras espera que lo cierres — a veces ni se ve, queda
+  // detrás de la ventana, y por dentro sigue bloqueando igual. Esto no
+  // bloquea nada, se muestra arriba y se esconde solo.
+  const avisar = (texto, tipo = 'ok') => {
+    setAviso({ texto, tipo });
+    setTimeout(() => setAviso(null), 4000);
+  };
 
   // ── Búsqueda dentro del formulario ──
   const [busquedaCliente, setBusquedaCliente] = useState('');
@@ -190,7 +201,7 @@ export default function Presupuestos({ presupuestos = [], cargando = false }) {
       try {
         cotizacion = await obtenerCotizacionDolar();
       } catch (error) {
-        alert(error.message);
+        avisar(error.message, 'error');
         return;
       }
     }
@@ -232,7 +243,7 @@ export default function Presupuestos({ presupuestos = [], cargando = false }) {
       (p.cliente || '').toLowerCase().includes(busquedaCliente.trim().toLowerCase())
     );
     setResultadosCliente(encontrados);
-    if (encontrados.length === 0) alert('No se encontraron presupuestos con ese cliente');
+    if (encontrados.length === 0) avisar('No se encontraron presupuestos con ese cliente', 'error');
   };
 
   const buscarNro = () => {
@@ -241,7 +252,7 @@ export default function Presupuestos({ presupuestos = [], cargando = false }) {
     if (encontrado) {
       seleccionar(encontrado);
     } else {
-      alert('No se encontró ningún presupuesto con ese número');
+      avisar('No se encontró ningún presupuesto con ese número', 'error');
     }
   };
 
@@ -262,16 +273,9 @@ export default function Presupuestos({ presupuestos = [], cargando = false }) {
 
   const { ipcRenderer } = window.require ? window.require('electron') : {};
 
-  const copiar = () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(JSON.stringify(form, null, 2));
-      alert('Datos copiados al portapapeles');
-    }
-  };
-
   const guardar = async () => {
     if (!form.nroPresupuesto.trim()) { 
-      alert('Ingresá un número de presupuesto'); 
+      avisar('Ingresá un número de presupuesto', 'error'); 
       return; 
     }
     setGuardando(true);
@@ -297,42 +301,47 @@ export default function Presupuestos({ presupuestos = [], cargando = false }) {
       }
 
       // 2. Envío a Google Sheets (con tipoDoc especificado)
+      // OJO: no se espera la respuesta (fire-and-forget). Este webhook a
+      // veces tarda varios segundos, y no tiene sentido tener al usuario
+      // esperando por un espejo de los datos que ya se guardó en Firebase.
       const webhookUrl = 'https://script.google.com/macros/s/AKfycbzujjs9mK50DDfnhKPJPGKTW7ZtbdqorfmpJKFhAEA1wumTEDr3L5WM8WtRkYNoreUYHQ/exec';
 
-      await fetch(webhookUrl, {
+      fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
           ...form,
           tipoDoc: 'presupuesto'
         })
+      }).catch((error) => {
+        console.log('Error enviando a Sheets (no crítico):', error.message);
       });
 
-      alert('Presupuesto guardado');
+      // (el aviso final lo muestra generarPDF, así no aparecen 2 popups seguidos)
     } catch (error) {
-      alert('Error al guardar: ' + error.message);
+      avisar('Error al guardar: ' + error.message, 'error');
     }
     setGuardando(false);
   };
 
   const generarPDF = async () => {
+    setGenerandoPDF(true);
     try {
-      const pdfBytes = await generarPresupuestoPDF(form);
       if (ipcRenderer) {
-        const result = await ipcRenderer.invoke('guardar-pdf', {
-          nombre: `Presupuesto_${form.nroPresupuesto || 'nuevo'}.pdf`,
-          buffer: Array.from(pdfBytes),
-          tipo: 'presupuesto'
-        });
+        // El PDF se arma del lado del proceso principal (main.js), no acá.
+        // Así el trabajo pesado (embeber la imagen de fondo) nunca traba
+        // la ventana ni impide seguir escribiendo.
+        const result = await ipcRenderer.invoke('generar-pdf-presupuesto', { form });
         if (result.ok) {
-          alert(`PDF guardado en: ${result.ruta}`);
+          avisar(`PDF guardado en: ${result.ruta}`, 'ok');
         } else {
-          alert(`Error al guardar PDF: ${result.error}`);
+          avisar(`Error al generar PDF: ${result.error}`, 'error');
         }
       }
     } catch (error) {
-      alert('Error al generar PDF: ' + error.message);
+      avisar('Error al generar PDF: ' + error.message, 'error');
     }
+    setGenerandoPDF(false);
   };
 
   const handleGuardarPDF = async () => {
@@ -347,7 +356,7 @@ export default function Presupuestos({ presupuestos = [], cargando = false }) {
       seleccionar(item);
       setVista('form');
     } else {
-      alert('No se encontró ningún presupuesto con ese número');
+      avisar('No se encontró ningún presupuesto con ese número', 'error');
     }
   };
 
@@ -394,9 +403,23 @@ export default function Presupuestos({ presupuestos = [], cargando = false }) {
     { label: 'SÍ', value: 'SI' }
   ];
 
+  // ── Aviso flotante (reemplaza a los alert() bloqueantes) ──
+  const Aviso = aviso && (
+    <div style={{
+      position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 200,
+      background: aviso.tipo === 'error' ? '#C62828' : '#1A1A1A',
+      color: aviso.tipo === 'error' ? '#fff' : '#F5C400',
+      padding: '12px 22px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+      boxShadow: '0 4px 16px rgba(0,0,0,0.25)', maxWidth: '80%', textAlign: 'center',
+    }}>
+      {aviso.texto}
+    </div>
+  );
+
   // ── FORMULARIO ──
   if (vista === 'form') return (
     <div style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
+      {Aviso}
       <style>{`.nd-input:focus { background: #FFF3C4 !important; border-color: #F5C400 !important; }`}</style>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', columnGap: 28, rowGap: 12 }}>
@@ -409,21 +432,9 @@ export default function Presupuestos({ presupuestos = [], cargando = false }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={copiar}
-            style={{ padding: '9px 20px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-            Copiar
-          </button>
-          <button onClick={guardar} disabled={guardando}
-            style={{ padding: '9px 20px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-            {guardando ? 'Guardando...' : 'Guardar'}
-          </button>
-          <button onClick={generarPDF}
-            style={{ padding: '9px 20px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-            Solo PDF
-          </button>
-          <button onClick={handleGuardarPDF} disabled={guardando}
-            style={{ padding: '9px 20px', background: '#1A1A1A', color: '#F5C400', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-            Guardar y PDF
+          <button onClick={handleGuardarPDF} disabled={guardando || generandoPDF}
+            style={{ padding: '9px 20px', background: '#1A1A1A', color: '#F5C400', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: (guardando || generandoPDF) ? 'default' : 'pointer' }}>
+            {guardando ? 'Guardando...' : generandoPDF ? 'Generando PDF...' : 'Guardar y PDF'}
           </button>
         </div>
       </div>
@@ -544,6 +555,7 @@ export default function Presupuestos({ presupuestos = [], cargando = false }) {
   // ── TABLA ──
   return (
     <div style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
+      {Aviso}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <div style={{ fontSize: 18, fontWeight: 700, color: '#1A1A1A' }}>Presupuestos</div>
         <button onClick={nuevo}
@@ -616,3 +628,9 @@ export default function Presupuestos({ presupuestos = [], cargando = false }) {
     </div>
   );
 }
+
+// React.memo: evita que este formulario se vuelva a renderizar por cosas
+// que no le importan (ej. el relojito de Dashboard tickeando cada
+// segundo). Solo se re-renderiza si "presupuestos" o "cargando" cambian
+// de verdad.
+export default React.memo(Presupuestos);

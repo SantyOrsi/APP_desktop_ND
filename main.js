@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { generarPresupuestoPDF } = require('./generarPresupuestoPDFMain');
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -60,6 +61,26 @@ ipcMain.handle('guardar-pdf', async (event, { nombre, buffer, tipo }) => {
     return { ok: true, ruta: filePath };
   } catch (error) {
     console.error('Error guardando PDF:', error);
+    return { ok: false, error: error.message };
+  }
+});
+
+// Arma Y guarda el PDF de Presupuesto acá (proceso principal), para que
+// el trabajo pesado (embeber la imagen de fondo) no trabe la ventana
+// mientras se genera. El renderer solo manda los datos del formulario.
+ipcMain.handle('generar-pdf-presupuesto', async (event, { form }) => {
+  try {
+    const pdfBytes = await generarPresupuestoPDF(form);
+    const carpeta = carpetaSegunTipo('presupuesto');
+    if (!fs.existsSync(carpeta)) {
+      fs.mkdirSync(carpeta, { recursive: true });
+    }
+    const nombre = `Presupuesto_${form.nroPresupuesto || 'nuevo'}.pdf`;
+    const filePath = path.join(carpeta, nombre);
+    fs.writeFileSync(filePath, Buffer.from(pdfBytes));
+    return { ok: true, ruta: filePath };
+  } catch (error) {
+    console.error('Error generando PDF de presupuesto:', error);
     return { ok: false, error: error.message };
   }
 });

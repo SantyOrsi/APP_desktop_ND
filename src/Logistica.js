@@ -3,6 +3,7 @@ import { db } from './constants/firebase';
 import { updateDoc, doc, Timestamp } from 'firebase/firestore';
 import { FLOTA } from './constants/flota';
 import { generarTraficoPDF } from './helpers/generarTraficoPDF';
+import { generarContratoPDF } from './helpers/generarContratoPDF';
 const { ipcRenderer } = window.require('electron');
 
 const ESTADO_LABEL = { pendiente: 'Pendiente', enRuta: 'En ruta', completo: 'Completo' };
@@ -46,7 +47,7 @@ const resultadoItem = (texto, onClick) => (
   </div>
 );
 
-export default function Logistica({ serviciosTodos = [], presupuestosTodos = [], cargando = false }) {
+export default function Logistica({ serviciosTodos = [], presupuestosTodos = [], contratosTodos = [], cargando = false }) {
   const servicios = useMemo(
     () => serviciosTodos.filter((s) => (s.estado || '') !== 'suspendido' && (s.estado || '') !== 'eliminado'),
     [serviciosTodos]
@@ -172,14 +173,30 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
 
   const generarPDF = async () => {
     try {
-      const pdfBytes = await generarTraficoPDF(servicioParaPDF(), presuActivo);
+      const servicioActual = servicioParaPDF();
+
+      const pdfBytes = await generarTraficoPDF(servicioActual, presuActivo);
       const result = await ipcRenderer.invoke('guardar-pdf', {
         nombre: `Trafico_${servicioActivo?.nropresupuesto || 'nuevo'}.pdf`,
         buffer: Array.from(pdfBytes),
         tipo: 'trafico',
       });
-      if (result.ok) avisar(`PDF guardado en: ${result.ruta}`, 'ok');
-      else if (result.error) avisar('Error al generar PDF: ' + result.error, 'error');
+
+      // Además del PDF de Tráfico, se genera el Contrato sin la parte del
+      // importe (cláusula Quinto) — para entregar al chofer/pasajero sin
+      // mostrar el precio acordado con el contratante.
+      let resultContrato = { ok: true };
+      if (presuActivo && contratoActivo) {
+        const pdfContratoBytes = await generarContratoPDF(presuActivo, contratoActivo, servicioActual, { incluirImporte: false });
+        resultContrato = await ipcRenderer.invoke('guardar-pdf', {
+          nombre: `Contrato_${servicioActivo?.nropresupuesto || 'nuevo'}_sin_importe.pdf`,
+          buffer: Array.from(pdfContratoBytes),
+          tipo: 'contrato',
+        });
+      }
+
+      if (result.ok && resultContrato.ok) avisar(`PDF guardado en: ${result.ruta}`, 'ok');
+      else avisar('Error al generar PDF: ' + (result.error || resultContrato.error), 'error');
     } catch (error) {
       avisar('Error al generar PDF: ' + error.message, 'error');
     }
@@ -202,6 +219,14 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
   }, [presupuestosTodos]);
 
   const presuActivo = servicioActivo ? presuPorNro[servicioActivo.nropresupuesto] : null;
+
+  const contratoPorNro = useMemo(() => {
+    const mapa = {};
+    contratosTodos.forEach((c) => { mapa[String(c.nroPresupuesto)] = c; });
+    return mapa;
+  }, [contratosTodos]);
+
+  const contratoActivo = servicioActivo ? contratoPorNro[servicioActivo.nropresupuesto] : null;
 
   const tieneTraficoHecho = (s) => {
     const tieneUnidad = (Array.isArray(s.unidad) ? s.unidad.length > 0 : !!s.unidad) || !!s.otraUnidad;

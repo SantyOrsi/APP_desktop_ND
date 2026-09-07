@@ -45,7 +45,7 @@ const NAV = [
 
   {
     id: 'dashboard',
-    label: 'Dashboard',
+    label: 'Inicio',
     icon: 'ti-layout-dashboard'
   },
 
@@ -1042,6 +1042,7 @@ export default function Dashboard({
           <Logistica
             serviciosTodos={serviciosTodos}
             presupuestosTodos={presupuestos}
+            contratosTodos={contratosTodos}
             cargando={cargandoServicios}
           />
         );

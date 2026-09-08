@@ -23,7 +23,7 @@ const COLUMNAS = [
   { key: 'movilAsignado',    label: 'Móvil asignado',            width: 150 },
   { key: 'choferes',         label: 'Choferes asignados',         width: 150 },
   { key: 'nroContrato',      label: 'Nro. contrato/presupuesto', width: 190 },
-  { key: 'observacion',      label: 'Observación',               width: 200 },
+  { key: 'observacion',      label: 'Observaciones',              width: 200 },
 ];
 
 const normalizarFecha = (f) => {
@@ -235,8 +235,15 @@ export default function Agenda({ rol }) {
     return null;
   };
 
-  // Filtra por el estado del CONTRATO vinculado. (SE QUITÓ CC)
+  const tieneAsignacionCompleta = (servicio) => {
+    const tieneUnidad = (Array.isArray(servicio.unidad) ? servicio.unidad.length > 0 : !!servicio.unidad) || !!servicio.otraUnidad;
+    const tieneChofer = Array.isArray(servicio.chofer) ? servicio.chofer.length > 0 : !!servicio.chofer;
+    return tieneUnidad && tieneChofer;
+  };
+
+  // Los servicios sin tráfico deben quedar visibles para que el admin pueda completarlos.
   const pasaFiltroPago = (s) => {
+    if (esAdmin && !tieneAsignacionCompleta(s)) return true;
     if (filtroPago === 'todos') return true;
     const estadoContrato = contratoPorNro[String(s.nropresupuesto)];
     if (!estadoContrato) return false; // sin contrato cargado, no pasa el filtro
@@ -316,8 +323,10 @@ export default function Agenda({ rol }) {
     const valores = valor.split(',').map((item) => item.trim()).filter(Boolean);
     setGuardandoCampo(`${servicio.id}-${campo}`);
     try {
-      await updateDoc(doc(db, 'servicios', servicio.id), { [campo]: valores });
-      setServicios((prev) => prev.map((item) => item.id === servicio.id ? { ...item, [campo]: valores } : item));
+      const actualizacion = { [campo]: valores };
+      if (!tieneAsignacionCompleta(servicio)) actualizacion.asignadoPorTrafico = false;
+      await updateDoc(doc(db, 'servicios', servicio.id), actualizacion);
+      setServicios((prev) => prev.map((item) => item.id === servicio.id ? { ...item, ...actualizacion } : item));
       setEdiciones((prev) => {
         const siguiente = { ...prev };
         delete siguiente[servicio.id];
@@ -554,11 +563,13 @@ export default function Agenda({ rol }) {
                       </div>
                       {items.map((s) => {
                         const fila = filaDeServicio(s);
+                        const asignacionCompleta = tieneAsignacionCompleta(s);
+                        const asignadoPorTrafico = s.asignadoPorTrafico === true;
                         return (
-                          <div key={s.id} style={{ display: 'flex', background: '#F4F4F4' }}>
+                          <div key={s.id} style={{ display: 'flex', background: asignacionCompleta ? '#F4F4F4' : '#FFF1F1', border: asignacionCompleta ? '1px solid transparent' : '1px solid #E53935' }}>
                             {COLUMNAS.map((c) => (
                               <div key={c.key} style={{ width: c.width, padding: '10px', borderRight: '1px solid #F5C400', borderTop: '1px solid #E5E5E5', flexShrink: 0 }}>
-                                {esAdmin && (c.key === 'movilAsignado' || c.key === 'choferes') ? (
+                                {esAdmin && (!asignadoPorTrafico || !asignacionCompleta) && (c.key === 'movilAsignado' || c.key === 'choferes') ? (
                                   <input
                                     value={ediciones[s.id]?.[c.key === 'movilAsignado' ? 'unidad' : 'chofer'] ?? valorEditable(s, c.key === 'movilAsignado' ? 'unidad' : 'chofer')}
                                     onChange={(e) => cambiarCampoAsignado(s.id, c.key === 'movilAsignado' ? 'unidad' : 'chofer', e.target.value)}

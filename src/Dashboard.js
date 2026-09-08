@@ -1061,7 +1061,7 @@ export default function Dashboard({
 
     if (seccion === 'agenda') {
 
-      return <Agenda />;
+      return <Agenda rol={rol} />;
 
     }
      // ==========================================

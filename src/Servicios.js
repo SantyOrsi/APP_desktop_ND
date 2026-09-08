@@ -538,7 +538,6 @@ const filtrados = useMemo(() => listaBase
             {form.movimientos === 'SI' && campo('Detalle Movimientos', inp(form.movimientosDetalle, set('movimientosDetalle'), 'Detallar movimientos...', 'text', bloqueado))}
             {campo('Aloj y Viat a cargo de', inp(form.alojViaticos, set('alojViaticos'), '', 'text', bloqueado))}
             {campo('Servicio a bordo', sel(form.servicioABordo, set('servicioABordo'), bloqueado, [{ key: 'Si', label: 'Si' }, { key: 'No', label: 'No' }]))}
-            {campo('Info Adicional', inp(form.infoAdicional, set('infoAdicional'), '', 'text', bloqueado))}
             {campo('Observaciones', inp(form.observaciones, set('observaciones'), '', 'text', bloqueado))}
           </div>
         </Seccion>

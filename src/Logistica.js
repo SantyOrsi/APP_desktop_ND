@@ -82,11 +82,12 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
   const bloqueado = chequeandoBusqueda && !servicioActivo;
 
   const abrirDesdeTabla = (s) => {
+    const asignadoPorTrafico = s.asignadoPorTrafico === true;
     setServicioActivo(s);
     setChequeandoBusqueda(false);
-    setChoferes(Array.isArray(s.chofer) ? (s.chofer.length ? s.chofer : ['']) : (s.chofer ? [s.chofer] : ['']));
-    setUnidadesSeleccionadas(Array.isArray(s.unidad) ? s.unidad : (s.unidad ? [s.unidad] : []));
-    setOtraUnidad(s.otraUnidad || '');
+    setChoferes(asignadoPorTrafico ? (Array.isArray(s.chofer) ? (s.chofer.length ? s.chofer : ['']) : (s.chofer ? [s.chofer] : [''])) : ['']);
+    setUnidadesSeleccionadas(asignadoPorTrafico ? (Array.isArray(s.unidad) ? s.unidad : (s.unidad ? [s.unidad] : [])) : []);
+    setOtraUnidad(asignadoPorTrafico ? s.otraUnidad || '' : '');
     setDineroViaje(s.dineroViaje || '');
     setCategoriaAbierta(null);
     setResultados([]);
@@ -146,6 +147,7 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
         unidad: unidadesSeleccionadas,
         otraUnidad: otraUnidad.trim(),
         dineroViaje: dineroViaje.trim(),
+        asignadoPorTrafico: choferesLimpios.length > 0 && (unidadesSeleccionadas.length > 0 || !!otraUnidad.trim()),
         actualizadoEn: Timestamp.now(),
       });
       avisar('Chofer y unidad asignados correctamente', 'ok');
@@ -221,9 +223,7 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
   const contratoActivo = servicioActivo ? contratoPorNro[servicioActivo.nropresupuesto] : null;
 
   const tieneTraficoHecho = (s) => {
-    const tieneUnidad = (Array.isArray(s.unidad) ? s.unidad.length > 0 : !!s.unidad) || !!s.otraUnidad;
-    const tieneChofer = Array.isArray(s.chofer) ? s.chofer.length > 0 : !!s.chofer;
-    return tieneUnidad && tieneChofer;
+    return s.asignadoPorTrafico === true;
   };
 
   const toggleOrden = (c) => setOrden((prev) => (prev.campo === c ? { campo: c, asc: !prev.asc } : { campo: c, asc: true }));

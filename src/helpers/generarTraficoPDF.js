@@ -72,11 +72,10 @@ export const generarTraficoPDF = async (servicio, presupuesto) => {
   escribir(58.29, 21.35, unirLista(servicio?.unidad) || 'Sin asignar');
   escribir(60.90, 19.93, unirLista(servicio?.chofer) || 'Sin asignar');
   escribir(63.51, 24.91, valorODefault(servicio?.dineroViaje, '0'));
+  escribir(97.2, 8.5, servicio?.emitidoPor ? `Emitido por: ${servicio.emitidoPor}` : '', 8);
 
-  // ── Info adicional (cuadro grande, con salto de línea) ──
-  const infoTexto = presupuesto?.infoAdicional === 'SI'
-    ? valorODefault(presupuesto.infoAdicionalDetalle, '-')
-    : 'No';
+  // ── Observaciones (cuadro grande, con salto de línea) ──
+  const infoTexto = valorODefault(servicio?.observaciones, '-');
   const { x: xInfo, y: yInfoTop } = vhvw(69.9, 8.3);
   const anchoMax = (92.5 - 8.3) / 100 * PAGE_W;
   const palabras = String(infoTexto).split(' ');

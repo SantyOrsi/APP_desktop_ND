@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { db } from './constants/firebase';
 import { collection, addDoc, updateDoc, doc, Timestamp, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { generarContratoPDF } from './helpers/generarContratoPDF';
+import { useSolicitudes } from './hooks/useSolicitudes';
 const { ipcRenderer } = window.require('electron');
 
 const hoy = () => {
@@ -26,7 +27,8 @@ const CICLO_FILTRO = [null, ...OPCIONES_ESTADO];
 const FORM_VACIO = {
   fechaContrato: '', clienteNombre: '', cuitDni: '', telefono: '',
   domicilioCliente: '', ciudad: '', domicilioOrigen: '', domicilioDestino: '',
-  senia: '', saldo: '', estado: '', estadoPrevio: '', metodoPago: '', fechaCancelacion: '',
+  senia: '', saldo: '', estado: '', estadoPrevio: '', metodoPago: '', fechaCancelacion: '', emitidoPor: '',
+  contratoFirmado: 'NO', contratoFirmadoConfirmado: false, contratoFirmadoEstado: 'no_aplica',
 };
 
 const inp = (value, onChange, placeholder = '', type = 'text', readOnly = false) => (
@@ -85,8 +87,9 @@ const resultadoItem = (texto, onClick) => (
   </div>
 );
 
-export default function Contratos({ rol, contratos = [], presupuestosTodos = [], cargando = false }) {
+export default function Contratos({ rol, usuario, contratos = [], presupuestosTodos = [], cargando = false }) {
   const esAdmin = rol === 'admin';
+  const { solicitarAcceso } = useSolicitudes(usuario);
   const [busquedaTabla, setBusquedaTabla] = useState('');
   const [vista, setVista] = useState('tabla');
   const [verPapelera, setVerPapelera] = useState(false);
@@ -148,8 +151,19 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
         const senia = parseFloat(val) || 0;
         updated.saldo = (total - senia).toFixed(2);
       }
+      if (key === 'contratoFirmado') {
+        updated.contratoFirmadoConfirmado = false;
+        updated.contratoFirmadoEstado = val === 'SI' ? 'pendiente' : 'no_aplica';
+      }
       return updated;
     });
+
+    if (key === 'contratoFirmado' && val === 'SI' && !esAdmin) {
+      solicitarAcceso('contratos', `contratoFirmado:${nroPresupuesto || 'sin-numero'}`, {
+        contratoId: docId || null,
+        nroPresupuesto: nroPresupuesto.trim(),
+      });
+    }
 
     if (key === 'clienteNombre') {
       const filtro = val.trim().toLowerCase();
@@ -357,6 +371,7 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
     }
     setGuardando(true);
     try {
+      let contratoId = docId;
       const datos = {
         nroPresupuesto,
         cliente: clienteEncontrado,
@@ -366,6 +381,12 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
         moneda,
         cotizacionDolar,
         ...form,
+        contratoFirmadoConfirmado: esAdmin && form.contratoFirmado === 'SI'
+          ? true
+          : form.contratoFirmado === 'SI' ? false : false,
+        contratoFirmadoEstado: form.contratoFirmado === 'SI'
+          ? (esAdmin ? 'aprobada' : 'pendiente')
+          : 'no_aplica',
         actualizadoEn: Timestamp.now(),
       };
       const q = query(collection(db, 'contratos'), where('nroPresupuesto', '==', nroPresupuesto.trim()));
@@ -375,11 +396,28 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
       if (!snap.empty) {
         await updateDoc(doc(db, 'contratos', snap.docs[0].id), datos);
         setDocId(snap.docs[0].id);
+        contratoId = snap.docs[0].id;
       } else {
         datos.creadoEn = Timestamp.now();
         const ref = await addDoc(collection(db, 'contratos'), datos);
         setDocId(ref.id);
+        contratoId = ref.id;
       }
+
+      if (form.contratoFirmado === 'SI' && !esAdmin) {
+        await solicitarAcceso('contratos', `contratoFirmado:${nroPresupuesto}`, {
+          contratoId,
+          nroPresupuesto: nroPresupuesto.trim(),
+        });
+      }
+
+      setForm((prev) => ({
+        ...prev,
+        contratoFirmadoConfirmado: esAdmin && prev.contratoFirmado === 'SI',
+        contratoFirmadoEstado: prev.contratoFirmado === 'SI'
+          ? (esAdmin ? 'aprobada' : 'pendiente')
+          : 'no_aplica',
+      }));
 
       // Si el contrato pasó a "Suspendido", los servicios asociados van a la papelera
       if (form.estado === 'Suspendido' && estadoAnterior !== 'Suspendido') {
@@ -703,6 +741,25 @@ export default function Contratos({ rol, contratos = [], presupuestosTodos = [],
             {campo('Estado', sel(form.estado, set('estado'), bloqueado))}
             {campo('Metodo de Pago', inp(form.metodoPago, set('metodoPago'), 'Ej: Efectivo, Transferencia', 'text', bloqueado))}
             {campo('Fecha Cancelación', inp(form.fechaCancelacion, set('fechaCancelacion'), 'DD/MM/AAAA', 'text', bloqueado))}
+            {campo('Emitido por', inp(form.emitidoPor, set('emitidoPor'), '', 'text', bloqueado))}
+          </div>
+        </Seccion>
+
+        <Seccion titulo="Contrato firmado">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', columnGap: 36, rowGap: 12 }}>
+            {campo('¿Contrato firmado?', (
+              <select value={form.contratoFirmado || 'NO'} onChange={set('contratoFirmado')} disabled={bloqueado}
+                className="nd-input"
+                style={{ padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13, background: bloqueado ? '#F0F0F0' : '#F8F8F8', outline: 'none', width: '100%', color: '#1A1A1A' }}>
+                <option value="NO">NO</option>
+                <option value="SI">SI</option>
+              </select>
+            ))}
+            {form.contratoFirmado === 'SI' && (
+              <div style={{ fontSize: 12, color: form.contratoFirmadoConfirmado ? '#2E7D32' : '#F57F17', alignSelf: 'end', paddingBottom: 8 }}>
+                {form.contratoFirmadoConfirmado ? 'Confirmado por un administrador' : 'Pendiente de confirmación de un administrador'}
+              </div>
+            )}
           </div>
         </Seccion>
       </div>

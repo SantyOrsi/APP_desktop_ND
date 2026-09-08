@@ -10,6 +10,7 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  getDoc,
   doc,
   serverTimestamp
 } from 'firebase/firestore';
@@ -140,7 +141,8 @@ export function useSolicitudes(usuario) {
 
   const solicitarAcceso = async (
     seccionSolicitada,
-    tipoAcceso = 'seccion'
+    tipoAcceso = 'seccion',
+    datosExtra = {}
   ) => {
 
     if (!usuario?.uid || cargandoSolicitud) return;
@@ -180,6 +182,8 @@ export function useSolicitudes(usuario) {
 
           tipoAcceso,
 
+          ...datosExtra,
+
           estado: 'pendiente',
 
           creadoEn: serverTimestamp()
@@ -218,6 +222,8 @@ export function useSolicitudes(usuario) {
         solicitudId
       );
 
+      const solicitud = await getDoc(docRef);
+
       await updateDoc(
         docRef,
         {
@@ -225,6 +231,14 @@ export function useSolicitudes(usuario) {
           fechaRespuesta: serverTimestamp()
         }
       );
+
+      const datosContrato = solicitud.data();
+      if (datosContrato?.contratoId) {
+        await updateDoc(doc(db, 'contratos', datosContrato.contratoId), {
+          contratoFirmadoConfirmado: nuevoEstado === 'aprobada',
+          contratoFirmadoEstado: nuevoEstado,
+        });
+      }
 
     } catch (error) {
 

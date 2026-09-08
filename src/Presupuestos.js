@@ -44,7 +44,7 @@ const FORM_VACIO = {
   origen: '', destino: '', kmRecorrer: '', salidaFecha: hoy(), salidaHora: '',
   retornoFecha: '', retornoHora: '', movimiento: 'NO', movimientoDetalle: '',
   adicionales: 'NO', adicionalesDetalle: '', infoAdicional: 'NO', infoAdicionalDetalle: '', alojViaticosCargo: '',
-  importAlojViaticos: '', capacidad: '', tipoTransporte: '', moneda: 'ARS', cotizacionDolar: '', costoTotal: '', costoIva: '', estado: 'pendiente',
+  importAlojViaticos: '', capacidad: '', tipoTransporte: '', moneda: 'ARS', cotizacionDolar: '', costoTotal: '', costoIva: '', estado: 'pendiente', emitidoPor: '',
 };
 
 const inp = (value, onChange, placeholder = '', type = 'text', readOnly = false) => (
@@ -545,6 +545,7 @@ function Presupuestos({ presupuestos = [], cargando = false }) {
             {campo('Cotización dólar hoy', inp(form.cotizacionDolar, () => {}, 'Se actualiza automáticamente', 'text', true))}
             {campo(`Costo Total (${form.moneda})`, inp(form.costoTotal, set('costoTotal')))}
             {campo(`Costo + IVA (10.5%) (${form.moneda})`, inp(form.costoIva, set('costoIva')))}
+            {campo('Emitido por', inp(form.emitidoPor, set('emitidoPor')))}
           </div>
         </Seccion>
 

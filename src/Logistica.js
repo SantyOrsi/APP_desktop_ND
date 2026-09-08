@@ -68,6 +68,7 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
   const [otraUnidad, setOtraUnidad] = useState('');
   const [categoriaAbierta, setCategoriaAbierta] = useState(null);
   const [dineroViaje, setDineroViaje] = useState('');
+  const [emitidoPor, setEmitidoPor] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [aviso, setAviso] = useState(null); // { texto, tipo: 'ok' | 'error' }
 
@@ -88,6 +89,7 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
     setUnidadesSeleccionadas(Array.isArray(s.unidad) ? s.unidad : (s.unidad ? [s.unidad] : []));
     setOtraUnidad(s.otraUnidad || '');
     setDineroViaje(s.dineroViaje || '');
+    setEmitidoPor(s.emitidoPor || '');
     setCategoriaAbierta(null);
     setResultados([]);
     setVista('form');
@@ -100,6 +102,7 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
     setUnidadesSeleccionadas([]);
     setOtraUnidad('');
     setDineroViaje('');
+    setEmitidoPor('');
     setCategoriaAbierta(null);
     setBusquedaCliente(''); setBusquedaDestino(''); setBusquedaNro(''); setBusquedaFecha('');
     setResultados([]);
@@ -146,6 +149,7 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
         unidad: unidadesSeleccionadas,
         otraUnidad: otraUnidad.trim(),
         dineroViaje: dineroViaje.trim(),
+        emitidoPor: emitidoPor.trim(),
         actualizadoEn: Timestamp.now(),
       });
       avisar('Chofer y unidad asignados correctamente', 'ok');
@@ -167,6 +171,7 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
       chofer: choferesLimpios,
       unidad: unidadesTexto,
       dineroViaje: dineroViaje.trim(),
+      emitidoPor: emitidoPor.trim(),
     };
   };
 
@@ -393,15 +398,19 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
             <label style={{ fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>Dinero para viaje</label>
             <input
               value={dineroViaje}
-              onChange={(e) => setDineroViaje(e.target.value.replace(/[^0-9]/g, ''))}
+              onChange={(e) => setDineroViaje(e.target.value)}
               readOnly={bloqueado}
-              placeholder="0"
+              placeholder="Escribir importe o detalle"
               style={{
-                padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13,
+                padding: '10px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13,
                 background: bloqueado ? '#F0F0F0' : '#F8F8F8', outline: 'none', width: '100%',
-                color: bloqueado ? '#888' : '#1A1A1A',
+                color: bloqueado ? '#888' : '#1A1A1A', minHeight: 72, resize: 'vertical',
               }}
             />
+          </div>
+
+          <div style={{ marginTop: 22 }}>
+            {campo('Emitido por', inp(emitidoPor, (e) => setEmitidoPor(e.target.value), 'Nombre de quien lo hizo', bloqueado))}
           </div>
         </Seccion>
 
@@ -444,7 +453,7 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
           {campo('Tipo / Caract. Transporte', txtArea(presuActivo?.tipoTransporte, () => {}, '', true, 3))}
           {campo('Movimientos', txtArea(presuActivo?.movimiento === 'SI' ? presuActivo?.movimientoDetalle || 'SÍ' : 'NO', () => {}, '', true, 3))}
           {campo('Adicionales', txtArea(presuActivo?.adicionales === 'SI' ? presuActivo?.adicionalesDetalle || 'SÍ' : 'NO', () => {}, '', true, 3))}
-          {campo('Info Adicional', txtArea(presuActivo?.infoAdicional === 'SI' ? presuActivo?.infoAdicionalDetalle || 'SÍ' : 'NO', () => {}, '', true, 3))}
+          {campo('Observaciones', txtArea(servicioActivo?.observaciones, () => {}, '', true, 4))}
           </div>
       </Seccion>
 

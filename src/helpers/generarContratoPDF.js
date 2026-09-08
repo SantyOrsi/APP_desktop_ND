@@ -137,6 +137,7 @@ export const generarContratoPDF = async (presupuesto, contrato) => {
   escribir(92.0, 74.3, contrato.clienteNombre, 8);
   escribir(93.8, 77.2, contrato.cuitDni, 8);
   escribir(95.9, 71.1, contrato.telefono, 8);
+  escribir(97.5, 8.5, contrato.emitidoPor ? `Emitido por: ${contrato.emitidoPor}` : '', 8);
 
   return await pdfDoc.save();
 };

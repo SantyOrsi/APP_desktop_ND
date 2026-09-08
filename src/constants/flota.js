@@ -11,7 +11,7 @@ export const FLOTA = [
   },
   {
     id: 'mini15', nombre: 'Minibús 15 pax', capacidad: 15, capacidadTexto: '15 pasajeros',
-    subUnidades: ['26'],
+    subUnidades: ['M26'],
   },
   {
     id: 'mini17', nombre: 'Minibús 17 pax', capacidad: 17, capacidadTexto: '17 pasajeros',
@@ -19,15 +19,15 @@ export const FLOTA = [
   },
   {
     id: 'mini19', nombre: 'Minibús 19 pax', capacidad: 19, capacidadTexto: '19 pasajeros',
-    subUnidades: ['12', '19', '20', '23', '29', '30', '31', '32', '33'],
+    subUnidades: ['M12', 'M19', 'M20', 'M23', 'M29', 'M30', 'M31', 'M32', 'M33'],
   },
   {
     id: 'mini23', nombre: 'Minibús 23 pax', capacidad: 23, capacidadTexto: '23 pasajeros',
-    subUnidades: ['16', '18'], // son de 24 pax en el parque, van agrupadas acá
+    subUnidades: ['M16', 'M18'], // son de 24 pax en el parque, van agrupadas acá
   },
   {
     id: 'urbano', nombre: 'Bus urbano/interurbano', capacidad: 50, capacidadTexto: 'De 41 a 50 pasajeros',
-    subUnidades: ['24', '25', '27', '28', '38'],
+    subUnidades: ['M24', 'M25', 'M27', 'M28', 'M38'],
   },
   {
     id: 'comil', nombre: 'Comil', capacidad: 47, capacidadTexto: '47 pasajeros',
@@ -35,7 +35,7 @@ export const FLOTA = [
   },
   {
     id: 'dobleP', nombre: 'Doble piso', capacidad: 60, capacidadTexto: '60 pasajeros',
-    subUnidades: ['3426', '3526', '3626', '3726'], // incluye la de 64 pax
+    subUnidades: ['M3426', 'M3526', 'M3626', 'M3726'], // incluye la de 64 pax
   },
 ];
 

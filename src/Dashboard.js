@@ -1011,6 +1011,7 @@ export default function Dashboard({
         return (
           <Contratos
             rol={rol}
+            usuario={usuario}
             contratos={contratosTodos}
             presupuestosTodos={presupuestos}
             cargando={cargandoContratos}
@@ -1056,7 +1057,7 @@ export default function Dashboard({
 
     if (seccion === 'agenda') {
 
-      return <Agenda />;
+      return <Agenda rol={rol} />;
 
     }
      // ==========================================
@@ -1166,11 +1167,11 @@ export default function Dashboard({
                     {' '}solicita acceso a{' '}
 
                     <b>
-
-                      {sol.tipoAcceso === 'tabla'
-                        ? `la tabla de ${sol.seccionSolicitada}`
-                        : `la sección completa de ${sol.seccionSolicitada}`}
-
+                      {sol.tipoAcceso?.startsWith('contratoFirmado:')
+                        ? `la confirmación del contrato firmado del presupuesto N° ${sol.nroPresupuesto || sol.tipoAcceso.split(':')[1]}`
+                        : sol.tipoAcceso === 'tabla'
+                          ? `la tabla de ${sol.seccionSolicitada}`
+                          : `la sección completa de ${sol.seccionSolicitada}`}
                     </b>
 
                   </span>

@@ -47,6 +47,7 @@ export const generarServicioPDF = async (form, presupuesto = null) => {
   escribir(52.06, 23.84, adicionalesTexto);
   escribir(54.68, 29.18, form.servicioABordo);
   escribir(57.96, 62.40, form.alojViaticos);
+  escribir(97.2, 8.5, form.emitidoPor ? `Emitido por: ${form.emitidoPor}` : '', 8);
 
   // Observaciones: texto normal, dentro del recuadro (con salto de línea si no entra)
   const obs = valorODefault(form.observaciones);

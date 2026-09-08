@@ -38,10 +38,10 @@ app.on('activate', () => {
 });
 
 // ── Guardar PDF (Rutas para Máquina Virtual en Disco D:) ──
-const CARPETA_PDFS_PRESUPUESTOS = 'D:/Proyectos/Pdfs';
-const CARPETA_PDFS_CONTRATOS   = 'D:/Proyectos/Pdfs';
-const CARPETA_PDFS_SERVICIOS   = 'D:/Proyectos/Pdfs';
-const CARPETA_PDFS_TRAFICO     = 'D:/Proyectos/Pdfs';
+const CARPETA_PDFS_PRESUPUESTOS = 'C:/Users/Santy/pdfs'
+const CARPETA_PDFS_CONTRATOS   = 'C:/Users/Santy/pdfs';
+const CARPETA_PDFS_SERVICIOS   = 'C:/Users/Santy/pdfs';
+const CARPETA_PDFS_TRAFICO     = 'C:/Users/Santy/pdfs';
 
 const carpetaSegunTipo = (tipo) => {
   if (tipo === 'contrato') return 'C:\\Users\\Santy\\pdfs';

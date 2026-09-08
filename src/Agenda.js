@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from './constants/firebase';
-import { collection, getDocs, doc, writeBatch, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, writeBatch, addDoc, serverTimestamp } from 'firebase/firestore';
 import { recomendarUnidad, FLOTA } from './constants/flota';
 
 const DIAS_SEMANA = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo'];
@@ -21,7 +21,7 @@ const COLUMNAS = [
   { key: 'diaRegreso',       label: 'Día de regreso',            width: 130 },
   { key: 'horaRegreso',      label: 'Horario de regreso',        width: 140 },
   { key: 'movilAsignado',    label: 'Móvil asignado',            width: 150 },
-  { key: 'choferes',         label: 'Choferes',                  width: 150 },
+  { key: 'choferes',         label: 'Choferes asignados',         width: 150 },
   { key: 'nroContrato',      label: 'Nro. contrato/presupuesto', width: 190 },
   { key: 'observacion',      label: 'Observación',               width: 200 },
 ];
@@ -119,7 +119,8 @@ const IconoVehiculo = ({ tipo, size = 30 }) => {
   );
 };
 
-export default function Agenda() {
+export default function Agenda({ rol }) {
+  const esAdmin = rol === 'admin';
   const hoy = new Date();
   const [mes, setMes] = useState(hoy.getMonth());
   const [anio, setAnio] = useState(hoy.getFullYear());
@@ -138,6 +139,8 @@ export default function Agenda() {
   const [guardandoEvento, setGuardandoEvento] = useState(false);
 
   const [modalDisponibilidad, setModalDisponibilidad] = useState(false);
+  const [ediciones, setEdiciones] = useState({});
+  const [guardandoCampo, setGuardandoCampo] = useState(null);
 
   const cargarServicios = async () => {
     try {
@@ -292,6 +295,38 @@ export default function Agenda() {
       nroContrato: s.nropresupuesto || '-',
       observacion: s.observaciones || '-',
     };
+  };
+
+  const valorEditable = (servicio, campo) => {
+    const valor = servicio[campo];
+    if (Array.isArray(valor)) return valor.filter(Boolean).join(', ');
+    return valor || '';
+  };
+
+  const cambiarCampoAsignado = (servicioId, campo, valor) => {
+    setEdiciones((prev) => ({
+      ...prev,
+      [servicioId]: { ...prev[servicioId], [campo]: valor },
+    }));
+  };
+
+  const guardarCampoAsignado = async (servicio, campo) => {
+    const valor = ediciones[servicio.id]?.[campo];
+    if (valor === undefined) return;
+    const valores = valor.split(',').map((item) => item.trim()).filter(Boolean);
+    setGuardandoCampo(`${servicio.id}-${campo}`);
+    try {
+      await updateDoc(doc(db, 'servicios', servicio.id), { [campo]: valores });
+      setServicios((prev) => prev.map((item) => item.id === servicio.id ? { ...item, [campo]: valores } : item));
+      setEdiciones((prev) => {
+        const siguiente = { ...prev };
+        delete siguiente[servicio.id];
+        return siguiente;
+      });
+    } catch (error) {
+      alert('Error al guardar la asignación: ' + error.message);
+    }
+    setGuardandoCampo(null);
   };
 
   const abrirModalEvento = (fechaStr) => {
@@ -453,7 +488,7 @@ export default function Agenda() {
 
           <button onClick={() => setModalDisponibilidad(true)}
             style={{ marginLeft: 'auto', padding: '7px 14px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-            🚐 Disponibilidad Unidades
+            🚐 Unidades ocupadas
           </button>
           <button onClick={recargarTodo}
             style={{ padding: '7px 14px', background: '#F2F2F2', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
@@ -523,7 +558,19 @@ export default function Agenda() {
                           <div key={s.id} style={{ display: 'flex', background: '#F4F4F4' }}>
                             {COLUMNAS.map((c) => (
                               <div key={c.key} style={{ width: c.width, padding: '10px', borderRight: '1px solid #F5C400', borderTop: '1px solid #E5E5E5', flexShrink: 0 }}>
-                                <span style={{ fontSize: 12, color: '#1A1A1A' }}>{fila[c.key]}</span>
+                                {esAdmin && (c.key === 'movilAsignado' || c.key === 'choferes') ? (
+                                  <input
+                                    value={ediciones[s.id]?.[c.key === 'movilAsignado' ? 'unidad' : 'chofer'] ?? valorEditable(s, c.key === 'movilAsignado' ? 'unidad' : 'chofer')}
+                                    onChange={(e) => cambiarCampoAsignado(s.id, c.key === 'movilAsignado' ? 'unidad' : 'chofer', e.target.value)}
+                                    onBlur={() => guardarCampoAsignado(s, c.key === 'movilAsignado' ? 'unidad' : 'chofer')}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                                    placeholder="Sin asignar"
+                                    disabled={guardandoCampo === `${s.id}-${(c.key === 'movilAsignado' ? 'unidad' : 'chofer')}`}
+                                    style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: '1px solid #D9D9D9', borderRadius: 6, fontSize: 12, background: '#fff', outline: 'none', color: '#1A1A1A' }}
+                                  />
+                                ) : (
+                                  <span style={{ fontSize: 12, color: '#1A1A1A' }}>{fila[c.key]}</span>
+                                )}
                               </div>
                             ))}
                           </div>

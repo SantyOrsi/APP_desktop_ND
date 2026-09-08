@@ -63,6 +63,7 @@ async function generarPresupuestoPDF(form) {
 
   escribir(63.12, 67.9, monto(form.costoTotal, form.moneda) || '$0');
   escribir(65.87, 67.9, monto(form.costoIva, form.moneda) || '$0');
+  escribir(97.2, 8.5, form.emitidoPor ? `Emitido por: ${form.emitidoPor}` : '', 8);
 
   const detalleTexto = form.movimiento === 'SI'
     ? valorODefault(form.movimientoDetalle, '-')

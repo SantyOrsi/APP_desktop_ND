@@ -75,7 +75,11 @@ export const generarPresupuestoPDF = async (form) => {
 
   escribir(63.12, 67.9, monto(form.costoTotal, form.moneda) || '$0');
   escribir(65.87, 67.9, monto(form.costoIva, form.moneda) || '$0');
-  escribir(97.2, 8.5, form.emitidoPor ? `Emitido por: ${form.emitidoPor}` : '', 8);
+  // ── Recuadro "Emitido por" (misma posición y tamaño en los 4 PDFs) ──
+  if (form.emitidoPor) {
+    page.drawRectangle({ x: 380, y: 824, width: 190, height: 16, color: rgb(1, 1, 1), borderColor: rgb(0.8, 0.8, 0.8), borderWidth: 0.75 });
+    page.drawText(`Emitido por: ${form.emitidoPor}`, { x: 386, y: 828, size: 8, font, color: NEGRO });
+  }
 
   // ── Detalle de movimientos (cuadro grande, con salto de línea) ──
   const detalleTexto = form.movimiento === 'SI'

@@ -2,6 +2,8 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { generarPresupuestoPDF } = require('./generarPresupuestoPDFMain');
+const { generarTraficoPDF } = require('./generarTraficoPDFMain');
+const { generarContratoPDF } = require('./generarContratoPDFMain');
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -37,11 +39,11 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
-// ── Guardar PDF (Rutas para Máquina Virtual en Disco D:) ──
-const CARPETA_PDFS_PRESUPUESTOS = 'C:/Users/Santy/pdfs'
-const CARPETA_PDFS_CONTRATOS   = 'C:/Users/Santy/pdfs';
-const CARPETA_PDFS_SERVICIOS   = 'C:/Users/Santy/pdfs';
-const CARPETA_PDFS_TRAFICO     = 'C:/Users/Santy/pdfs';
+// ── Guardar PDF ──
+const CARPETA_PDFS_PRESUPUESTOS = 'D:/Proyectos/Pdfs';
+const CARPETA_PDFS_CONTRATOS   = 'D:/Proyectos/Pdfs';
+const CARPETA_PDFS_SERVICIOS   = 'D:/Proyectos/Pdfs';
+const CARPETA_PDFS_TRAFICO     = 'D:/Proyectos/Pdfs';
 
 const carpetaSegunTipo = (tipo) => {
   if (tipo === 'contrato') return CARPETA_PDFS_CONTRATOS;
@@ -81,6 +83,37 @@ ipcMain.handle('generar-pdf-presupuesto', async (event, { form }) => {
     return { ok: true, ruta: filePath };
   } catch (error) {
     console.error('Error generando PDF de presupuesto:', error);
+    return { ok: false, error: error.message };
+  }
+});
+
+// Arma Y guarda el PDF de Tráfico (y, si hay contrato vinculado, también
+// el Contrato sin el importe) acá en el proceso principal — mismo motivo
+// que Presupuesto: no trabar la ventana mientras se arma.
+ipcMain.handle('generar-pdf-trafico', async (event, { servicio, presupuesto, contrato }) => {
+  try {
+    const carpetaTrafico = carpetaSegunTipo('trafico');
+    if (!fs.existsSync(carpetaTrafico)) fs.mkdirSync(carpetaTrafico, { recursive: true });
+
+    const pdfTraficoBytes = await generarTraficoPDF(servicio, presupuesto);
+    const nombreTrafico = `Trafico_${servicio?.nropresupuesto || 'nuevo'}.pdf`;
+    const rutaTrafico = path.join(carpetaTrafico, nombreTrafico);
+    fs.writeFileSync(rutaTrafico, Buffer.from(pdfTraficoBytes));
+
+    let rutaContrato = null;
+    if (presupuesto && contrato) {
+      const carpetaContrato = carpetaSegunTipo('contrato');
+      if (!fs.existsSync(carpetaContrato)) fs.mkdirSync(carpetaContrato, { recursive: true });
+
+      const pdfContratoBytes = await generarContratoPDF(presupuesto, contrato, servicio, { incluirImporte: false });
+      const nombreContrato = `Contrato_${servicio?.nropresupuesto || 'nuevo'}_sin_importe.pdf`;
+      rutaContrato = path.join(carpetaContrato, nombreContrato);
+      fs.writeFileSync(rutaContrato, Buffer.from(pdfContratoBytes));
+    }
+
+    return { ok: true, ruta: rutaTrafico, rutaContrato };
+  } catch (error) {
+    console.error('Error generando PDF de tráfico:', error);
     return { ok: false, error: error.message };
   }
 });

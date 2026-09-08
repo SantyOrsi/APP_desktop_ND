@@ -2,8 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { db } from './constants/firebase';
 import { updateDoc, doc, Timestamp } from 'firebase/firestore';
 import { FLOTA } from './constants/flota';
-import { generarTraficoPDF } from './helpers/generarTraficoPDF';
-import { generarContratoPDF } from './helpers/generarContratoPDF';
+
 const { ipcRenderer } = window.require('electron');
 
 const ESTADO_LABEL = { pendiente: 'Pendiente', enRuta: 'En ruta', completo: 'Completo' };
@@ -47,7 +46,7 @@ const resultadoItem = (texto, onClick) => (
   </div>
 );
 
-export default function Logistica({ serviciosTodos = [], presupuestosTodos = [], contratosTodos = [], cargando = false }) {
+export default function Logistica({ serviciosTodos = [], presupuestosTodos = [], contratosTodos = [], cargando = false, usuario = null }) {
   const servicios = useMemo(
     () => serviciosTodos.filter((s) => (s.estado || '') !== 'suspendido' && (s.estado || '') !== 'eliminado'),
     [serviciosTodos]
@@ -69,7 +68,6 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
   const [otraUnidad, setOtraUnidad] = useState('');
   const [categoriaAbierta, setCategoriaAbierta] = useState(null);
   const [dineroViaje, setDineroViaje] = useState('');
-  const [emitidoPor, setEmitidoPor] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [aviso, setAviso] = useState(null); // { texto, tipo: 'ok' | 'error' }
 
@@ -90,7 +88,6 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
     setUnidadesSeleccionadas(Array.isArray(s.unidad) ? s.unidad : (s.unidad ? [s.unidad] : []));
     setOtraUnidad(s.otraUnidad || '');
     setDineroViaje(s.dineroViaje || '');
-    setEmitidoPor(s.emitidoPor || '');
     setCategoriaAbierta(null);
     setResultados([]);
     setVista('form');
@@ -103,7 +100,6 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
     setUnidadesSeleccionadas([]);
     setOtraUnidad('');
     setDineroViaje('');
-    setEmitidoPor('');
     setCategoriaAbierta(null);
     setBusquedaCliente(''); setBusquedaDestino(''); setBusquedaNro(''); setBusquedaFecha('');
     setResultados([]);
@@ -150,7 +146,6 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
         unidad: unidadesSeleccionadas,
         otraUnidad: otraUnidad.trim(),
         dineroViaje: dineroViaje.trim(),
-        emitidoPor: emitidoPor.trim(),
         actualizadoEn: Timestamp.now(),
       });
       avisar('Chofer y unidad asignados correctamente', 'ok');
@@ -172,36 +167,28 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
       chofer: choferesLimpios,
       unidad: unidadesTexto,
       dineroViaje: dineroViaje.trim(),
-      emitidoPor: emitidoPor.trim(),
+      emitidoPor: usuario?.nombre || usuario?.email || '',
     };
   };
 
   const generarPDF = async () => {
     try {
       const servicioActual = servicioParaPDF();
+      const contratoParaPDF = contratoActivo
+        ? { ...contratoActivo, emitidoPor: usuario?.nombre || usuario?.email || '' }
+        : null;
 
-      const pdfBytes = await generarTraficoPDF(servicioActual, presuActivo);
-      const result = await ipcRenderer.invoke('guardar-pdf', {
-        nombre: `Trafico_${servicioActivo?.nropresupuesto || 'nuevo'}.pdf`,
-        buffer: Array.from(pdfBytes),
-        tipo: 'trafico',
+      // El PDF se arma del lado del proceso principal (main.js), no acá.
+      // Así el trabajo pesado (embeber la imagen de fondo) nunca traba
+      // la ventana ni impide seguir escribiendo.
+      const result = await ipcRenderer.invoke('generar-pdf-trafico', {
+        servicio: servicioActual,
+        presupuesto: presuActivo,
+        contrato: contratoParaPDF,
       });
 
-      // Además del PDF de Tráfico, se genera el Contrato sin la parte del
-      // importe (cláusula Quinto) — para entregar al chofer/pasajero sin
-      // mostrar el precio acordado con el contratante.
-      let resultContrato = { ok: true };
-      if (presuActivo && contratoActivo) {
-        const pdfContratoBytes = await generarContratoPDF(presuActivo, contratoActivo, servicioActual, { incluirImporte: false });
-        resultContrato = await ipcRenderer.invoke('guardar-pdf', {
-          nombre: `Contrato_${servicioActivo?.nropresupuesto || 'nuevo'}_sin_importe.pdf`,
-          buffer: Array.from(pdfContratoBytes),
-          tipo: 'contrato',
-        });
-      }
-
-      if (result.ok && resultContrato.ok) avisar(`PDF guardado en: ${result.ruta}`, 'ok');
-      else avisar('Error al generar PDF: ' + (result.error || resultContrato.error), 'error');
+      if (result.ok) avisar(`PDF guardado en: ${result.ruta}`, 'ok');
+      else avisar('Error al generar PDF: ' + result.error, 'error');
     } catch (error) {
       avisar('Error al generar PDF: ' + error.message, 'error');
     }
@@ -423,19 +410,15 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
             <label style={{ fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>Dinero para viaje</label>
             <input
               value={dineroViaje}
-              onChange={(e) => setDineroViaje(e.target.value)}
+              onChange={(e) => setDineroViaje(e.target.value.replace(/[^0-9]/g, ''))}
               readOnly={bloqueado}
-              placeholder="Escribir importe o detalle"
+              placeholder="0"
               style={{
-                padding: '10px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13,
+                padding: '8px 12px', border: '1px solid #E0E0E0', borderRadius: 8, fontSize: 13,
                 background: bloqueado ? '#F0F0F0' : '#F8F8F8', outline: 'none', width: '100%',
-                color: bloqueado ? '#888' : '#1A1A1A', minHeight: 72, resize: 'vertical',
+                color: bloqueado ? '#888' : '#1A1A1A',
               }}
             />
-          </div>
-
-          <div style={{ marginTop: 22 }}>
-            {campo('Emitido por', inp(emitidoPor, (e) => setEmitidoPor(e.target.value), 'Nombre de quien lo hizo', bloqueado))}
           </div>
         </Seccion>
 
@@ -478,7 +461,7 @@ export default function Logistica({ serviciosTodos = [], presupuestosTodos = [],
           {campo('Tipo / Caract. Transporte', txtArea(presuActivo?.tipoTransporte, () => {}, '', true, 3))}
           {campo('Movimientos', txtArea(presuActivo?.movimiento === 'SI' ? presuActivo?.movimientoDetalle || 'SÍ' : 'NO', () => {}, '', true, 3))}
           {campo('Adicionales', txtArea(presuActivo?.adicionales === 'SI' ? presuActivo?.adicionalesDetalle || 'SÍ' : 'NO', () => {}, '', true, 3))}
-          {campo('Observaciones', txtArea(servicioActivo?.observaciones, () => {}, '', true, 4))}
+          {campo('Info Adicional', txtArea(presuActivo?.infoAdicional === 'SI' ? presuActivo?.infoAdicionalDetalle || 'SÍ' : 'NO', () => {}, '', true, 3))}
           </div>
       </Seccion>
 

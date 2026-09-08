@@ -47,7 +47,6 @@ export const generarServicioPDF = async (form, presupuesto = null) => {
   escribir(52.06, 23.84, adicionalesTexto);
   escribir(54.68, 29.18, form.servicioABordo);
   escribir(57.96, 62.40, form.alojViaticos);
-  escribir(97.2, 8.5, form.emitidoPor ? `Emitido por: ${form.emitidoPor}` : '', 8);
 
   // Observaciones: texto normal, dentro del recuadro (con salto de línea si no entra)
   const obs = valorODefault(form.observaciones);
@@ -70,6 +69,12 @@ export const generarServicioPDF = async (form, presupuesto = null) => {
         page.drawText(linea, { x, y: y - renglon * 11, size: 8, font: fontObs, color: NEGRO });
       }
     });
+  }
+
+  // ── Recuadro "Emitido por" (misma posición y tamaño en los 4 PDFs) ──
+  if (form.emitidoPor) {
+    page.drawRectangle({ x: 380, y: 824, width: 190, height: 16, color: rgb(1, 1, 1), borderColor: rgb(0.8, 0.8, 0.8), borderWidth: 0.75 });
+    page.drawText(`Emitido por: ${form.emitidoPor}`, { x: 386, y: 828, size: 8, font, color: NEGRO });
   }
 
   return await pdfDoc.save();

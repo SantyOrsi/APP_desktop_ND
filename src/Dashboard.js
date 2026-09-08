@@ -997,6 +997,7 @@ export default function Dashboard({
           <Presupuestos
             presupuestos={presupuestos}
             cargando={cargandoPresupuestos}
+            usuario={usuario}
           />
         );
 
@@ -1011,10 +1012,10 @@ export default function Dashboard({
         return (
           <Contratos
             rol={rol}
-            usuario={usuario}
             contratos={contratosTodos}
             presupuestosTodos={presupuestos}
             cargando={cargandoContratos}
+            usuario={usuario}
           />
         );
 
@@ -1032,6 +1033,7 @@ export default function Dashboard({
             servicios={serviciosTodos}
             presupuestosTodos={presupuestos}
             cargando={cargandoServicios}
+            usuario={usuario}
           />
         );
 
@@ -1045,6 +1047,7 @@ export default function Dashboard({
             presupuestosTodos={presupuestos}
             contratosTodos={contratosTodos}
             cargando={cargandoServicios}
+            usuario={usuario}
           />
         );
 
@@ -1058,7 +1061,7 @@ export default function Dashboard({
 
     if (seccion === 'agenda') {
 
-      return <Agenda rol={rol} />;
+      return <Agenda />;
 
     }
      // ==========================================
@@ -1168,11 +1171,11 @@ export default function Dashboard({
                     {' '}solicita acceso a{' '}
 
                     <b>
-                      {sol.tipoAcceso?.startsWith('contratoFirmado:')
-                        ? `la confirmación del contrato firmado del presupuesto N° ${sol.nroPresupuesto || sol.tipoAcceso.split(':')[1]}`
-                        : sol.tipoAcceso === 'tabla'
-                          ? `la tabla de ${sol.seccionSolicitada}`
-                          : `la sección completa de ${sol.seccionSolicitada}`}
+
+                      {sol.tipoAcceso === 'tabla'
+                        ? `la tabla de ${sol.seccionSolicitada}`
+                        : `la sección completa de ${sol.seccionSolicitada}`}
+
                     </b>
 
                   </span>
@@ -1936,48 +1939,17 @@ export default function Dashboard({
             }}
           >
 
-            <div
+            <img
+              src={LOGO_ND}
+              alt="Grupo Nuevo Destino"
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
-                background: '#F5C400',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                overflow: 'hidden',
+                width: 106,
+                height: 34,
+                objectFit: 'fill',
+                display: 'block',
                 flexShrink: 0
               }}
-            >
-              <img src={LOGO_ND} alt="ND" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            </div>
-
-
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 700
-              }}
-            >
-
-              <span
-                style={{
-                  color: '#fff'
-                }}
-              >
-                NUEVO{' '}
-              </span>
-
-
-              <span
-                style={{
-                  color: '#F5C400'
-                }}
-              >
-                DESTINO
-              </span>
-
-            </div>
+            />
 
           </div>
 

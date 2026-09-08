@@ -124,13 +124,14 @@ export default function Contratos({ rol, usuario, contratos = [], presupuestosTo
   const [cotizacionDolar, setCotizacionDolar] = useState('');
   const [presupuestoVinculado, setPresupuestoVinculado] = useState(null);
 
-  // Costo total y moneda EN VIVO: se leen directo del presupuesto vinculado
-  // (que ya viene siempre actualizado por Firestore), no de una copia vieja
-  // guardada en un useState — así si después cambiás el precio en
-  // Presupuestos, acá se refleja solo, sin quedar con el precio viejo.
+  // Costo total EN VIVO: se lee del presupuesto vinculado (siempre
+  // actualizado por Firestore) — arregla que quedara con el precio viejo.
+  // OJO: la moneda del total es la del PRESUPUESTO (presuVivo.moneda) y
+  // es independiente de "moneda" (que es la moneda propia de la
+  // Seña/Saldo del contrato) — antes se mezclaban las dos y por eso el
+  // total terminaba mostrando la moneda de la seña en vez de la suya.
   const presuVivo = presupuestosTodos.find((p) => String(p.nroPresupuesto) === String(nroPresupuesto));
-  const costoTotalActual = presuVivo ? (presuVivo.costoTotal ?? '0') : costoTotal;
-  const monedaActual = presuVivo ? (presuVivo.moneda || 'ARS') : moneda;
+  const costoTotalActual = presuVivo ? (presuVivo.costoTotal ?? costoTotal) : costoTotal;
 
   const [desbloqueado, setDesbloqueado] = useState(false);
   const bloqueado = !desbloqueado;
@@ -386,7 +387,7 @@ export default function Contratos({ rol, usuario, contratos = [], presupuestosTo
         fechaPresupuesto: fecha,
         destino,
         costoTotal: costoTotalActual,
-        moneda: monedaActual,
+        moneda,
         cotizacionDolar,
         ...form,
         contratoFirmadoConfirmado: esAdmin && form.contratoFirmado === 'SI'
@@ -569,8 +570,8 @@ export default function Contratos({ rol, usuario, contratos = [], presupuestosTo
         if (!snap.empty) presu = snap.docs[0].data();
       }
       const pdfBytes = await generarContratoPDF(
-        { ...presu, nroPresupuesto, destino, costoTotal: costoTotalActual, moneda: monedaActual, costoIva: presu?.costoIva },
-        form
+        { ...presu, nroPresupuesto, destino, costoTotal: costoTotalActual, costoIva: presu?.costoIva },
+        { ...form, moneda, emitidoPor: usuario?.nombre || usuario?.email || '' }
       );
       const result = await ipcRenderer.invoke('guardar-pdf', {
         nombre: `Contrato_${nroPresupuesto || 'nuevo'}.pdf`,

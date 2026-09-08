@@ -1,5 +1,5 @@
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { CONTRATO_FONDO } from '../constants/pdfAssets';
+const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
+const { CONTRATO_FONDO } = require('./pdfAssetsMain');
 
 const PAGE_W = 612;
 const PAGE_H = 862;
@@ -196,7 +196,7 @@ const dibujarLineaDerecha = (page, fontNormal, fontBold, runs, y, fontSize, inte
   return y - interlinea;
 };
 
-export const generarContratoPDF = async (presupuesto, contrato, servicio = null, opciones = {}) => {
+async function generarContratoPDF(presupuesto, contrato, servicio = null, opciones = {}) {
   const { incluirImporte = true } = opciones;
 
   const fFirma = parseFecha(contrato.fechaContrato);
@@ -227,7 +227,7 @@ export const generarContratoPDF = async (presupuesto, contrato, servicio = null,
 
   // ── Fondo ──
   const base64 = CONTRATO_FONDO.split(',')[1];
-  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  const bytes = Buffer.from(base64, 'base64');
   const fondoImg = await pdfDoc.embedPng(bytes);
   page.drawImage(fondoImg, { x: 0, y: 0, width: PAGE_W, height: PAGE_H });
 
@@ -369,4 +369,6 @@ export const generarContratoPDF = async (presupuesto, contrato, servicio = null,
   }
 
   return await pdfDoc.save();
-};
+}
+
+module.exports = { generarContratoPDF };

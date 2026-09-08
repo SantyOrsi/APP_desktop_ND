@@ -44,7 +44,7 @@ const FORM_VACIO = {
   origen: '', destino: '', kmRecorrer: '', salidaFecha: hoy(), salidaHora: '',
   retornoFecha: '', retornoHora: '', movimiento: 'NO', movimientoDetalle: '',
   adicionales: 'NO', adicionalesDetalle: '', infoAdicional: 'NO', infoAdicionalDetalle: '', alojViaticosCargo: '',
-  importAlojViaticos: '', capacidad: '', tipoTransporte: '', moneda: 'ARS', cotizacionDolar: '', costoTotal: '', costoIva: '', estado: 'pendiente', emitidoPor: '',
+  importAlojViaticos: '', capacidad: '', tipoTransporte: '', moneda: 'ARS', cotizacionDolar: '', costoTotal: '', costoIva: '', estado: 'pendiente',
 };
 
 const inp = (value, onChange, placeholder = '', type = 'text', readOnly = false) => (
@@ -112,7 +112,7 @@ const resultadoItem = (texto, onClick) => (
   </div>
 );
 
-function Presupuestos({ presupuestos = [], cargando = false }) {
+function Presupuestos({ presupuestos = [], cargando = false, usuario = null }) {
   const [busqueda, setBusqueda] = useState('');
   const [vista, setVista] = useState('tabla');
   const [form, setForm] = useState(FORM_VACIO);
@@ -331,7 +331,9 @@ function Presupuestos({ presupuestos = [], cargando = false }) {
         // El PDF se arma del lado del proceso principal (main.js), no acá.
         // Así el trabajo pesado (embeber la imagen de fondo) nunca traba
         // la ventana ni impide seguir escribiendo.
-        const result = await ipcRenderer.invoke('generar-pdf-presupuesto', { form });
+        const result = await ipcRenderer.invoke('generar-pdf-presupuesto', {
+          form: { ...form, emitidoPor: usuario?.nombre || usuario?.email || '' },
+        });
         if (result.ok) {
           avisar(`PDF guardado en: ${result.ruta}`, 'ok');
         } else {
@@ -545,7 +547,6 @@ function Presupuestos({ presupuestos = [], cargando = false }) {
             {campo('Cotización dólar hoy', inp(form.cotizacionDolar, () => {}, 'Se actualiza automáticamente', 'text', true))}
             {campo(`Costo Total (${form.moneda})`, inp(form.costoTotal, set('costoTotal')))}
             {campo(`Costo + IVA (10.5%) (${form.moneda})`, inp(form.costoIva, set('costoIva')))}
-            {campo('Emitido por', inp(form.emitidoPor, set('emitidoPor')))}
           </div>
         </Seccion>
 

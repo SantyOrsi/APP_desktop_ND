@@ -38,7 +38,7 @@ const FORM_VACIO = {
   capacidad: '', estado: 'pendiente', domicilioOrigen: '', domicilioDestino: '',
   salidaFecha: '', salidaHora: '', retornoFecha: '', retornoHora: '',
   movimientos: 'NO', movimientosDetalle: '', alojViaticos: '', dineroViaje: '', servicioABordo: 'No',
-  observaciones: '', emitidoPor: '',
+  infoAdicional: '', observaciones: '',
 };
 
 const inp = (value, onChange, placeholder = '', type = 'text', readOnly = false) => (
@@ -101,7 +101,7 @@ const ESTADO_COLOR = {
   completo: { bg: '#E8F5E9', color: '#2E7D32' },
 };
 
-export default function Servicios({ rol, servicios = [], presupuestosTodos = [], cargando = false }) {
+export default function Servicios({ rol, servicios = [], presupuestosTodos = [], cargando = false, usuario = null }) {
   const esAdmin = rol === 'admin';
   const [busquedaTabla, setBusquedaTabla] = useState('');
   const [vista, setVista] = useState('tabla');
@@ -140,7 +140,7 @@ export default function Servicios({ rol, servicios = [], presupuestosTodos = [],
 
   const CAMPOS_FECHA = ['salidaFecha', 'retornoFecha'];
   const CAMPOS_HORA = ['salidaHora', 'retornoHora'];
-  const CAMPOS_NUMERICOS = ['cuit', 'telefono', 'capacidad'];
+  const CAMPOS_NUMERICOS = ['cuit', 'telefono', 'capacidad', 'dineroViaje'];
 
   const set = (key) => (e) => {
     let val = e.target.value;
@@ -299,7 +299,7 @@ export default function Servicios({ rol, servicios = [], presupuestosTodos = [],
         const snap = await getDocs(q);
         if (!snap.empty) presu = snap.docs[0].data();
       }
-      const pdfBytes = await generarServicioPDF(form, presu);
+      const pdfBytes = await generarServicioPDF({ ...form, emitidoPor: usuario?.nombre || usuario?.email || '' }, presu);
       const result = await ipcRenderer.invoke('guardar-pdf', {
         nombre: `Servicio_${form.nropresupuesto || 'nuevo'}.pdf`,
         buffer: Array.from(pdfBytes),
@@ -538,8 +538,8 @@ const filtrados = useMemo(() => listaBase
             {form.movimientos === 'SI' && campo('Detalle Movimientos', inp(form.movimientosDetalle, set('movimientosDetalle'), 'Detallar movimientos...', 'text', bloqueado))}
             {campo('Aloj y Viat a cargo de', inp(form.alojViaticos, set('alojViaticos'), '', 'text', bloqueado))}
             {campo('Servicio a bordo', sel(form.servicioABordo, set('servicioABordo'), bloqueado, [{ key: 'Si', label: 'Si' }, { key: 'No', label: 'No' }]))}
+            {campo('Info Adicional', inp(form.infoAdicional, set('infoAdicional'), '', 'text', bloqueado))}
             {campo('Observaciones', inp(form.observaciones, set('observaciones'), '', 'text', bloqueado))}
-            {campo('Emitido por', inp(form.emitidoPor, set('emitidoPor'), '', 'text', bloqueado))}
           </div>
         </Seccion>
 

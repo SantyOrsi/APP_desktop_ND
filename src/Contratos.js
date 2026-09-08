@@ -124,6 +124,14 @@ export default function Contratos({ rol, usuario, contratos = [], presupuestosTo
   const [cotizacionDolar, setCotizacionDolar] = useState('');
   const [presupuestoVinculado, setPresupuestoVinculado] = useState(null);
 
+  // Costo total y moneda EN VIVO: se leen directo del presupuesto vinculado
+  // (que ya viene siempre actualizado por Firestore), no de una copia vieja
+  // guardada en un useState — así si después cambiás el precio en
+  // Presupuestos, acá se refleja solo, sin quedar con el precio viejo.
+  const presuVivo = presupuestosTodos.find((p) => String(p.nroPresupuesto) === String(nroPresupuesto));
+  const costoTotalActual = presuVivo ? (presuVivo.costoTotal ?? '0') : costoTotal;
+  const monedaActual = presuVivo ? (presuVivo.moneda || 'ARS') : moneda;
+
   const [desbloqueado, setDesbloqueado] = useState(false);
   const bloqueado = !desbloqueado;
 
@@ -147,7 +155,7 @@ export default function Contratos({ rol, usuario, contratos = [], presupuestosTo
       }
 
       if (key === 'senia') {
-        const total = parseFloat(costoTotal) || 0;
+        const total = parseFloat(costoTotalActual) || 0;
         const senia = parseFloat(val) || 0;
         updated.saldo = (total - senia).toFixed(2);
       }
@@ -377,8 +385,8 @@ export default function Contratos({ rol, usuario, contratos = [], presupuestosTo
         cliente: clienteEncontrado,
         fechaPresupuesto: fecha,
         destino,
-        costoTotal,
-        moneda,
+        costoTotal: costoTotalActual,
+        moneda: monedaActual,
         cotizacionDolar,
         ...form,
         contratoFirmadoConfirmado: esAdmin && form.contratoFirmado === 'SI'
@@ -561,7 +569,7 @@ export default function Contratos({ rol, usuario, contratos = [], presupuestosTo
         if (!snap.empty) presu = snap.docs[0].data();
       }
       const pdfBytes = await generarContratoPDF(
-        { ...presu, nroPresupuesto, destino, costoTotal, costoIva: presu?.costoIva },
+        { ...presu, nroPresupuesto, destino, costoTotal: costoTotalActual, moneda: monedaActual, costoIva: presu?.costoIva },
         form
       );
       const result = await ipcRenderer.invoke('guardar-pdf', {
